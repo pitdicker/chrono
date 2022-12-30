@@ -461,7 +461,7 @@ pub mod ts_microseconds {
             formatter.write_str("a unix timestamp in microseconds")
         }
 
-        /// Deserialize a timestamp in milliseconds since the epoch
+        /// Deserialize a timestamp in microseconds since the epoch
         fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
         where
             E: de::Error,
@@ -472,7 +472,7 @@ pub mod ts_microseconds {
             )
         }
 
-        /// Deserialize a timestamp in milliseconds since the epoch
+        /// Deserialize a timestamp in microseconds since the epoch
         fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: de::Error,
@@ -483,7 +483,7 @@ pub mod ts_microseconds {
             )
         }
 
-        /// Deserialize a timestamp in milliseconds since the epoch
+        /// Deserialize a timestamp in microseconds since the epoch
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: de::Error,
