@@ -221,6 +221,14 @@ pub mod ts_nanoseconds {
                 &value,
             )
         }
+
+        ///  Deserialize a timestamp in nanoseconds since the epoch
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_u64(value.parse::<u64>().map_err(|e| E::custom(e))?)
+        }
     }
 }
 
@@ -474,6 +482,14 @@ pub mod ts_microseconds {
                 &value,
             )
         }
+
+        /// Deserialize a timestamp in milliseconds since the epoch
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_u64(value.parse::<u64>().map_err(|e| E::custom(e))?)
+        }
     }
 }
 
@@ -722,6 +738,14 @@ pub mod ts_milliseconds {
                 Utc.timestamp_opt((value / 1000) as i64, ((value % 1000) * 1_000_000) as u32),
                 &value,
             )
+        }
+
+        /// Deserialize a timestamp in milliseconds since the epoch
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_u64(value.parse::<u64>().map_err(|e| E::custom(e))?)
         }
     }
 }
@@ -981,6 +1005,14 @@ pub mod ts_seconds {
             E: de::Error,
         {
             serde_from(Utc.timestamp_opt(value as i64, 0), &value)
+        }
+
+        /// Deserialize a timestamp in seconds since the epoch
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_u64(value.parse::<u64>().map_err(|e| E::custom(e))?)
         }
     }
 }
