@@ -155,12 +155,12 @@ impl Cache {
 
             return match FixedOffset::east_opt(offset) {
                 Some(offset) => LocalResult::Single(DateTime::from_utc(d, offset)),
-                None => LocalResult::None,
+                None => LocalResult::None, // Out-of-bound offset.
             };
         }
 
         // we pass through the year as the year of a local point in time must either be valid in that locale, or
-        // the entire time was skipped in which case we will return LocalResult::None anywa.
+        // the entire time was skipped in which case we will return `LocalResult::InGap` anyway.
         match self
             .zone
             .find_local_time_type_from_local(d.timestamp(), d.year())
@@ -180,6 +180,7 @@ impl Cache {
                 let offset = FixedOffset::east_opt(tt.offset()).unwrap();
                 LocalResult::Single(DateTime::from_utc(d - offset, offset))
             }
+            LocalResult::InGap(d) => LocalResult::InGap(d),
         }
     }
 }

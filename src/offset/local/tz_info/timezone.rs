@@ -7,6 +7,7 @@ use std::{cmp::Ordering, fmt, str};
 
 use super::rule::{AlternateTime, TransitionRule};
 use super::{parser, Error, DAYS_PER_WEEK, SECONDS_PER_DAY};
+use crate::offset::TimeZone as TzTrait;
 
 /// Time zone
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -214,24 +215,24 @@ impl<'a> TimeZoneRef<'a> {
         // };
         let local_leap_time = local_time;
 
-        // if we have at least one transition,
-        // we must check _all_ of them, incase of any Overlapping (LocalResult::Ambiguous) or Skipping (LocalResult::None) transitions
+        // If we have at least one transition, we must check _all_ of them, in case of any
+        // overlapping (LocalResult::Ambiguous) or skipping (LocalResult::InGap) transitions.
         if !self.transitions.is_empty() {
             let mut prev = Some(self.local_time_types[0]);
 
             for transition in self.transitions {
                 let after_ltt = self.local_time_types[transition.local_time_type_index];
 
-                // the end and start here refers to where the time starts prior to the transition
-                // and where it ends up after. not the temporal relationship.
+                // The end and start here refer to where the time starts prior to the transition
+                // and where it ends up after, not the temporal relationship.
                 let transition_end = transition.unix_leap_time + i64::from(after_ltt.ut_offset);
                 let transition_start =
                     transition.unix_leap_time + i64::from(prev.unwrap().ut_offset);
 
                 match transition_start.cmp(&transition_end) {
                     Ordering::Greater => {
-                        // bakwards transition, eg from DST to regular
-                        // this means a given local time could have one of two possible offsets
+                        // Backwards transition, e.g. from DST to regular.
+                        // This means a given local time could have one of two possible offsets.
                         if local_leap_time < transition_end {
                             return Ok(crate::LocalResult::Single(prev.unwrap()));
                         } else if local_leap_time >= transition_end
@@ -262,7 +263,7 @@ impl<'a> TimeZoneRef<'a> {
                         if local_leap_time <= transition_start {
                             return Ok(crate::LocalResult::Single(prev.unwrap()));
                         } else if local_leap_time < transition_end {
-                            return Ok(crate::LocalResult::None);
+                            return Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(transition_end, 0).unwrap()));
                         } else if local_leap_time == transition_end {
                             return Ok(crate::LocalResult::Single(after_ltt));
                         }

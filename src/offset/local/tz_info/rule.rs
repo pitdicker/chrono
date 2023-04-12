@@ -6,6 +6,7 @@ use super::{
     rem_euclid, Error, CUMUL_DAY_IN_MONTHS_NORMAL_YEAR, DAYS_PER_WEEK, DAY_IN_MONTHS_NORMAL_YEAR,
     SECONDS_PER_DAY,
 };
+use crate::offset::TimeZone as TzTrait;
 
 /// Transition rule
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -265,7 +266,7 @@ impl AlternateTime {
                     } else if local_time > dst_start_transition_start
                         && local_time < dst_start_transition_end
                     {
-                        Ok(crate::LocalResult::None)
+                        Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(dst_start_transition_end, 0).unwrap()))
                     } else if local_time >= dst_start_transition_end
                         && local_time < dst_end_transition_end
                     {
@@ -293,7 +294,7 @@ impl AlternateTime {
                     } else if local_time >= dst_start_transition_start
                         && local_time < dst_start_transition_end
                     {
-                        Ok(crate::LocalResult::None)
+                        Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(dst_start_transition_end, 0).unwrap()))
                     } else {
                         Ok(crate::LocalResult::Single(self.dst))
                     }
@@ -318,7 +319,7 @@ impl AlternateTime {
                     } else if local_time >= dst_end_transition_start
                         && local_time < dst_end_transition_end
                     {
-                        Ok(crate::LocalResult::None)
+                        Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(dst_end_transition_end, 0).unwrap()))
                     } else {
                         Ok(crate::LocalResult::Single(self.std))
                     }
@@ -330,7 +331,7 @@ impl AlternateTime {
                     } else if local_time > dst_end_transition_start
                         && local_time < dst_end_transition_end
                     {
-                        Ok(crate::LocalResult::None)
+                        Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(dst_end_transition_end, 0).unwrap()))
                     } else if local_time >= dst_end_transition_end
                         && local_time < dst_start_transition_end
                     {
