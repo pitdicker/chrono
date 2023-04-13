@@ -189,6 +189,16 @@ mod tests {
     use crate::offset::TimeZone;
     use crate::{Datelike, TimeDelta, Utc};
 
+    // FIXME: this test only works in the Europe/Amsterdam timezone (or with the same DST)
+    #[test]
+    fn test_dst_gap_amsterdam() {
+        let dst_gap = Local.with_ymd_and_hms(2023, 3, 26, 2, 30, 0);
+        let transition_before = Local.with_ymd_and_hms(2023, 3, 26, 2, 0, 0).unwrap();
+        let transition_after = Local.with_ymd_and_hms(2023, 3, 26, 3, 0, 0).unwrap();
+        assert_eq!(dst_gap.earliest_or_before().unwrap(), transition_before);
+        assert_eq!(dst_gap.latest_or_after().unwrap(), transition_after);
+    }
+
     #[test]
     fn verify_correct_offsets() {
         let now = Local::now();

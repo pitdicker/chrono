@@ -7,7 +7,6 @@ use std::{cmp::Ordering, fmt, str};
 
 use super::rule::{AlternateTime, TransitionRule};
 use super::{parser, Error, DAYS_PER_WEEK, SECONDS_PER_DAY};
-use crate::offset::TimeZone as TzTrait;
 
 /// Time zone
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -123,7 +122,7 @@ impl TimeZone {
         &self,
         local_time: i64,
         year: i32,
-    ) -> Result<crate::LocalResult<LocalTimeType>, Error> {
+    ) -> Result<(crate::LocalResult<LocalTimeType>, i64), Error> {
         self.as_ref().find_local_time_type_from_local(local_time, year)
     }
 
@@ -205,7 +204,7 @@ impl<'a> TimeZoneRef<'a> {
         &self,
         local_time: i64,
         year: i32,
-    ) -> Result<crate::LocalResult<LocalTimeType>, Error> {
+    ) -> Result<(crate::LocalResult<LocalTimeType>, i64), Error> {
         // #TODO: this is wrong as we need 'local_time_to_local_leap_time ?
         // but ... does the local time even include leap seconds ??
         // let unix_leap_time = match self.unix_time_to_unix_leap_time(local_time) {
@@ -233,24 +232,24 @@ impl<'a> TimeZoneRef<'a> {
                         // Backwards transition. This means a given local time could have two
                         // possible offsets.
                         if local_leap_time < after {
-                            return Ok(crate::LocalResult::Single(prev));
+                            return Ok((crate::LocalResult::Single(prev), local_time));
                         } else if local_leap_time >= after && local_leap_time <= before {
                             if prev.ut_offset < after_ltt.ut_offset {
-                                return Ok(crate::LocalResult::Ambiguous(prev, after_ltt));
+                                return Ok((crate::LocalResult::Ambiguous(prev, after_ltt), local_time));
                             } else {
-                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev));
+                                return Ok((crate::LocalResult::Ambiguous(after_ltt, prev), local_time));
                             }
                         }
                     }
                     Ordering::Equal => {
                         // Does this ever happen? Lets handle it anyway.
                         if local_leap_time < before {
-                            return Ok(crate::LocalResult::Single(prev));
+                            return Ok((crate::LocalResult::Single(prev), local_time));
                         } else if local_leap_time == after {
                             if prev.ut_offset < after_ltt.ut_offset {
-                                return Ok(crate::LocalResult::Ambiguous(prev, after_ltt));
+                                return Ok((crate::LocalResult::Ambiguous(prev, after_ltt), local_time));
                             } else {
-                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev));
+                                return Ok((crate::LocalResult::Ambiguous(after_ltt, prev), local_time));
                             }
                         }
                     }
@@ -258,11 +257,11 @@ impl<'a> TimeZoneRef<'a> {
                         // Forwards transition. This means that times that are skipped are invalid
                         // local times.
                         if local_leap_time <= before {
-                            return Ok(crate::LocalResult::Single(prev));
+                            return Ok((crate::LocalResult::Single(prev), local_time));
                         } else if local_leap_time < after {
-                            return Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(after, 0).unwrap()));
+                            return Ok((crate::LocalResult::InGap(prev, after_ltt), transition.unix_leap_time));
                         } else if local_leap_time == after {
-                            return Ok(crate::LocalResult::Single(after_ltt));
+                            return Ok((crate::LocalResult::Single(after_ltt), local_time));
                         }
                     }
                 }
@@ -279,7 +278,7 @@ impl<'a> TimeZoneRef<'a> {
                 err => err,
             }
         } else {
-            Ok(crate::LocalResult::Single(self.local_time_types[0]))
+            Ok((crate::LocalResult::Single(self.local_time_types[0]), local_time))
         }
     }
 

@@ -53,8 +53,9 @@ pub enum LocalResult<T> {
     /// Given local time representation does not exist.
     /// This can occur, for example, for datetimes within a positive timezone transition.
     ///
-    /// Carries the UTC datetime around which the transition happens.
-    InGap(DateTime<Utc>),
+    /// Carries the datetime at which the transition happens and the resulting datetime of the
+    /// transition.
+    InGap(T /*before*/, T /*after*/),
 }
 
 impl<T> LocalResult<T> {
@@ -82,16 +83,36 @@ impl<T> LocalResult<T> {
         }
     }
 
+    /// Returns `Some` for the latest possible conversion result, or `None` if none.
+    pub fn earliest_or_before(self) -> Option<T> {
+        match self {
+            LocalResult::Single(t) | LocalResult::Ambiguous(t, _) => Some(t),
+            LocalResult::InGap(t, _) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Returns `Some` for the latest possible conversion result, or `None` if none.
+    pub fn latest_or_after(self) -> Option<T> {
+        match self {
+            LocalResult::Single(t) | LocalResult::Ambiguous(_, t) => Some(t),
+            LocalResult::InGap(_, t) => Some(t),
+            _ => None,
+        }
+    }
+
     /// Maps a `LocalResult<T>` into `LocalResult<U>` with given function.
     ///
-    /// The function is only applied on a `LocalResult::Single`, and on both values of a
-    /// `LocalResult::Ambiguous`.
+    /// The function is applied on a `LocalResult::Single`, and on both values of
+    /// `LocalResult::Ambiguous` or `LocalResult::InGap`.
     pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> LocalResult<U> {
         match self {
             LocalResult::None => LocalResult::None,
             LocalResult::Single(v) => LocalResult::Single(f(v)),
-            LocalResult::Ambiguous(min, max) => LocalResult::Ambiguous(f(min), f(max)),
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
+            LocalResult::Ambiguous(earliest, latest) => {
+                LocalResult::Ambiguous(f(earliest), f(latest))
+            }
+            LocalResult::InGap(before, after) => LocalResult::InGap(f(before), f(after)),
         }
     }
 }
@@ -109,13 +130,9 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
             LocalResult::Single(d) => {
                 d.and_time(time).map_or(LocalResult::None, LocalResult::Single)
             }
-            LocalResult::Ambiguous(a, b) => {
-                match (a.and_time(time), b.and_time(time)) {
-                    (Some(a), Some(b)) => LocalResult::Ambiguous(a, b),
-                    _ => LocalResult::None,
-                }
+            LocalResult::Ambiguous(_, _) | LocalResult::InGap(_, _) => {
+                panic!() // Can't end up with `Ambiguous` or `InGap` without a time
             }
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
         }
     }
 
@@ -132,13 +149,9 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
             LocalResult::Single(d) => {
                 d.and_hms_opt(hour, min, sec).map_or(LocalResult::None, LocalResult::Single)
             }
-            LocalResult::Ambiguous(a, b) => {
-                match (a.and_hms_opt(hour, min, sec), b.and_hms_opt(hour, min, sec)) {
-                    (Some(a), Some(b)) => LocalResult::Ambiguous(a, b),
-                    _ => LocalResult::None,
-                }
+            LocalResult::Ambiguous(_, _) | LocalResult::InGap(_, _) => {
+                panic!() // Can't end up with `Ambiguous` or `InGap` without a time
             }
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
         }
     }
 
@@ -162,13 +175,9 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
             LocalResult::Single(d) => d
                 .and_hms_milli_opt(hour, min, sec, milli)
                 .map_or(LocalResult::None, LocalResult::Single),
-            LocalResult::Ambiguous(a, b) => {
-                match (a.and_hms_milli_opt(hour, min, sec, milli), b.and_hms_milli_opt(hour, min, sec, milli)) {
-                    (Some(a), Some(b)) => LocalResult::Ambiguous(a, b),
-                    _ => LocalResult::None,
-                }
+            LocalResult::Ambiguous(_, _) | LocalResult::InGap(_, _) => {
+                panic!() // Can't end up with `Ambiguous` or `InGap` without a time
             }
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
         }
     }
 
@@ -176,7 +185,7 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
     /// The microsecond part can exceed 1,000,000 in order to represent the leap second.
     /// The offset in the current date is preserved.
     ///
-    /// Propagates any error. Ambiguous result would be discarded.
+    /// Propagates any error.
     ///
     /// Returns `LocalResult::None` on invalid hour, minute, second and/or microsecond.
     #[inline]
@@ -192,13 +201,9 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
             LocalResult::Single(d) => d
                 .and_hms_micro_opt(hour, min, sec, micro)
                 .map_or(LocalResult::None, LocalResult::Single),
-            LocalResult::Ambiguous(a, b) => {
-                match (a.and_hms_micro_opt(hour, min, sec, micro), b.and_hms_micro_opt(hour, min, sec, micro)) {
-                    (Some(a), Some(b)) => LocalResult::Ambiguous(a, b),
-                    _ => LocalResult::None,
-                }
+            LocalResult::Ambiguous(_, _) | LocalResult::InGap(_, _) => {
+                panic!() // Can't end up with `Ambiguous` or `InGap` without a time
             }
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
         }
     }
 
@@ -222,13 +227,9 @@ impl<Tz: TimeZone> LocalResult<Date<Tz>> {
             LocalResult::Single(d) => d
                 .and_hms_nano_opt(hour, min, sec, nano)
                 .map_or(LocalResult::None, LocalResult::Single),
-            LocalResult::Ambiguous(a, b) => {
-                match (a.and_hms_nano_opt(hour, min, sec, nano), b.and_hms_nano_opt(hour, min, sec, nano)) {
-                    (Some(a), Some(b)) => LocalResult::Ambiguous(a, b),
-                    _ => LocalResult::None,
-                }
+            LocalResult::Ambiguous(_, _) | LocalResult::InGap(_, _) => {
+                panic!() // Can't end up with `Ambiguous` or `InGap` without a time
             }
-            LocalResult::InGap(utc) => LocalResult::InGap(utc),
         }
     }
 }
@@ -238,10 +239,12 @@ impl<T: fmt::Debug> LocalResult<T> {
     pub fn unwrap(self) -> T {
         match self {
             LocalResult::None => panic!("No such local time"),
-            LocalResult::InGap(t) => panic!("Unrepresentable datetime, falls around {:?}", t),
             LocalResult::Single(t) => t,
             LocalResult::Ambiguous(t1, t2) => {
                 panic!("Ambiguous local time, ranging from {:?} to {:?}", t1, t2)
+            }
+            LocalResult::InGap(t1, t2) => {
+                panic!("Unrepresentable datetime, falls between {:?} and {:?}", t1, t2)
             }
         }
     }
@@ -303,7 +306,7 @@ pub trait TimeZone: Sized + Clone {
     /// The time zone normally does not affect the date (unless it is between UTC-24 and UTC+24),
     /// but it will propagate to the `DateTime` values constructed via this date.
     ///
-    /// Returns `Invalid` on the out-of-range date, invalid month and/or day.
+    /// Returns `None` on the out-of-range date, invalid month and/or day.
     #[deprecated(since = "0.4.23", note = "use `with_ymd_and_hms()` instead")]
     #[allow(deprecated)]
     fn ymd_opt(&self, year: i32, month: u32, day: u32) -> LocalResult<Date<Self>> {
@@ -335,7 +338,7 @@ pub trait TimeZone: Sized + Clone {
     /// The time zone normally does not affect the date (unless it is between UTC-24 and UTC+24),
     /// but it will propagate to the `DateTime` values constructed via this date.
     ///
-    /// Returns `Invalid` on the out-of-range date and/or invalid DOY.
+    /// Returns `None` on the out-of-range date and/or invalid DOY.
     #[deprecated(
         since = "0.4.23",
         note = "use `from_local_datetime()` with a `NaiveDateTime` instead"
@@ -374,7 +377,7 @@ pub trait TimeZone: Sized + Clone {
     /// The time zone normally does not affect the date (unless it is between UTC-24 and UTC+24),
     /// but it will propagate to the `DateTime` values constructed via this date.
     ///
-    /// Returns `Invalid` on the out-of-range date and/or invalid week number.
+    /// Returns `None` on the out-of-range date and/or invalid week number.
     #[deprecated(
         since = "0.4.23",
         note = "use `from_local_datetime()` with a `NaiveDateTime` instead"

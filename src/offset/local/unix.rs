@@ -166,8 +166,8 @@ impl Cache {
             .find_local_time_type_from_local(d.timestamp(), d.year())
             .expect("unable to select local time type")
         {
-            LocalResult::None => LocalResult::None,
-            LocalResult::Ambiguous(early, late) => {
+            (LocalResult::None, _) => LocalResult::None,
+            (LocalResult::Ambiguous(early, late), _) => {
                 let early_offset = FixedOffset::east_opt(early.offset()).unwrap();
                 let late_offset = FixedOffset::east_opt(late.offset()).unwrap();
 
@@ -176,11 +176,19 @@ impl Cache {
                     DateTime::from_utc(d - late_offset, late_offset),
                 )
             }
-            LocalResult::Single(tt) => {
+            (LocalResult::Single(tt), _) => {
                 let offset = FixedOffset::east_opt(tt.offset()).unwrap();
                 LocalResult::Single(DateTime::from_utc(d - offset, offset))
             }
-            LocalResult::InGap(d) => LocalResult::InGap(d),
+            (LocalResult::InGap(before, after), transition_ts) => {
+                let transition_dt = NaiveDateTime::from_timestamp_opt(transition_ts, 0).unwrap();
+                let before_offset = FixedOffset::east_opt(before.offset()).unwrap();
+                let after_offset = FixedOffset::east_opt(after.offset()).unwrap();
+                LocalResult::InGap(
+                    DateTime::from_utc(transition_dt, before_offset),
+                    DateTime::from_utc(transition_dt, after_offset),
+                )
+            }
         }
     }
 }
