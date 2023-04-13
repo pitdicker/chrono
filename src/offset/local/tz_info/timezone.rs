@@ -218,60 +218,57 @@ impl<'a> TimeZoneRef<'a> {
         // If we have at least one transition, we must check _all_ of them, in case of any
         // overlapping (LocalResult::Ambiguous) or skipping (LocalResult::InGap) transitions.
         if !self.transitions.is_empty() {
-            let mut prev = Some(self.local_time_types[0]);
+            let mut prev = self.local_time_types[0];
 
             for transition in self.transitions {
                 let after_ltt = self.local_time_types[transition.local_time_type_index];
 
-                // The end and start here refer to where the time starts prior to the transition
-                // and where it ends up after, not the temporal relationship.
-                let transition_end = transition.unix_leap_time + i64::from(after_ltt.ut_offset);
-                let transition_start =
-                    transition.unix_leap_time + i64::from(prev.unwrap().ut_offset);
+                // `before` refers to the timestamp the transition happens, and `after` to the
+                // timestamp that is the result of the transition.
+                let before = transition.unix_leap_time + i64::from(prev.ut_offset);
+                let after = transition.unix_leap_time + i64::from(after_ltt.ut_offset);
 
-                match transition_start.cmp(&transition_end) {
+                match before.cmp(&after) {
                     Ordering::Greater => {
-                        // Backwards transition, e.g. from DST to regular.
-                        // This means a given local time could have one of two possible offsets.
-                        if local_leap_time < transition_end {
-                            return Ok(crate::LocalResult::Single(prev.unwrap()));
-                        } else if local_leap_time >= transition_end
-                            && local_leap_time <= transition_start
-                        {
-                            if prev.unwrap().ut_offset < after_ltt.ut_offset {
-                                return Ok(crate::LocalResult::Ambiguous(prev.unwrap(), after_ltt));
+                        // Backwards transition. This means a given local time could have two
+                        // possible offsets.
+                        if local_leap_time < after {
+                            return Ok(crate::LocalResult::Single(prev));
+                        } else if local_leap_time >= after && local_leap_time <= before {
+                            if prev.ut_offset < after_ltt.ut_offset {
+                                return Ok(crate::LocalResult::Ambiguous(prev, after_ltt));
                             } else {
-                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev.unwrap()));
+                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev));
                             }
                         }
                     }
                     Ordering::Equal => {
-                        // should this ever happen? presumably we have to handle it anyway.
-                        if local_leap_time < transition_start {
-                            return Ok(crate::LocalResult::Single(prev.unwrap()));
-                        } else if local_leap_time == transition_end {
-                            if prev.unwrap().ut_offset < after_ltt.ut_offset {
-                                return Ok(crate::LocalResult::Ambiguous(prev.unwrap(), after_ltt));
+                        // Does this ever happen? Lets handle it anyway.
+                        if local_leap_time < before {
+                            return Ok(crate::LocalResult::Single(prev));
+                        } else if local_leap_time == after {
+                            if prev.ut_offset < after_ltt.ut_offset {
+                                return Ok(crate::LocalResult::Ambiguous(prev, after_ltt));
                             } else {
-                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev.unwrap()));
+                                return Ok(crate::LocalResult::Ambiguous(after_ltt, prev));
                             }
                         }
                     }
                     Ordering::Less => {
-                        // forwards transition, eg from regular to DST
-                        // this means that times that are skipped are invalid local times
-                        if local_leap_time <= transition_start {
-                            return Ok(crate::LocalResult::Single(prev.unwrap()));
-                        } else if local_leap_time < transition_end {
-                            return Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(transition_end, 0).unwrap()));
-                        } else if local_leap_time == transition_end {
+                        // Forwards transition. This means that times that are skipped are invalid
+                        // local times.
+                        if local_leap_time <= before {
+                            return Ok(crate::LocalResult::Single(prev));
+                        } else if local_leap_time < after {
+                            return Ok(crate::LocalResult::InGap(crate::Utc.timestamp_opt(after, 0).unwrap()));
+                        } else if local_leap_time == after {
                             return Ok(crate::LocalResult::Single(after_ltt));
                         }
                     }
                 }
 
                 // try the next transition, we are fully after this one
-                prev = Some(after_ltt);
+                prev = after_ltt;
             }
         };
 
