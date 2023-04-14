@@ -188,6 +188,17 @@ mod tests {
     use super::Local;
     use crate::offset::TimeZone;
     use crate::{Datelike, TimeDelta, Utc};
+    use crate::NaiveDate;
+
+    // FIXME: this test only works in the Europe/Amsterdam timezone (or with the same DST)
+    #[test]
+    fn test_dst_end_amsterdam() {
+        let dst_ambiguous = Local.with_ymd_and_hms(2022, 10, 30, 2, 30, 0);
+        let earliest = Local.from_utc_datetime(&NaiveDate::from_ymd_opt(2022, 10, 30).unwrap().and_hms_opt(1, 30, 0).unwrap());
+        let latest = Local.from_utc_datetime(&NaiveDate::from_ymd_opt(2022, 10, 30).unwrap().and_hms_opt(2, 30, 0).unwrap());
+        assert_eq!(dst_ambiguous.earliest().unwrap(), earliest);
+        assert_eq!(dst_ambiguous.latest().unwrap(), latest);
+    }
 
     // FIXME: this test only works in the Europe/Amsterdam timezone (or with the same DST)
     #[test]
