@@ -1301,6 +1301,64 @@ impl NaiveDate {
         NaiveWeek { date: *self, start }
     }
 
+    /// Difference between two dates expressed as whole months and the remaining days.
+    /// This method takes into account the correct number of days of each passing month.
+    ///
+    /// The order of the arguments is (`self`, `other`), not (first, last).
+    /// `self` can be seen as the reference date.
+    /// - When _counting down_ from the reference date to `other`, the number of remaining days may
+    /// depend on the number of days in the first month.
+    /// - When _counting the elapsed period_ from `self` to `other`, the number of remaining days
+    ///   may depend on the number of days in the last month before `other`.
+    ///
+    /// ```
+    /// # use chrono::NaiveDate;
+    /// let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+    ///
+    /// // Elapsed months and days since a reference date:
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 26)), (2, 29));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 27)), (3, 0));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 28)), (3, 1));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 29)), (3, 2));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 30)), (3, 3));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 31)), (3, 4));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 6, 1)), (3, 5));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 6, 2)), (3, 6));
+    ///
+    /// // Remaining months days until the reference date:
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 2, 27)), (3, 3)); // <- 3 days less!
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 2, 28)), (3, 2));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 1)), (3, 1));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 2)), (3, 0));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 3)), (2, 30));
+    /// ```
+    pub fn diff_months_days(self: NaiveDate, other: NaiveDate) -> (u32, u32) {
+        let (first, last) = if self <= other {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
+        let mut months = 12 * (last.year() - first.year()) as u32 + last.month() - first.month();
+        let days = if first.day() <= last.day() {
+            last.day() - first.day()
+        } else {
+            months -= 1;
+            let mut year = other.year();
+            let mut month = other.month();
+            if other < self {
+                month += 1;
+                if month > 12 {
+                    month = 1;
+                    year += 1;
+                }
+            }
+            let days_in_month = NaiveDate::from_ymd_opt(year, month, 1).unwrap().pred_opt().unwrap().day();
+            last.day() + days_in_month - first.day()
+        };
+        (months, days)
+    }
+
     /// The minimum possible `NaiveDate` (January 1, 262145 BCE).
     pub const MIN: NaiveDate = NaiveDate { ymdf: (MIN_YEAR << 13) | (1 << 4) | 0o07 /*FE*/ };
     /// The maximum possible `NaiveDate` (December 31, 262143 CE).
