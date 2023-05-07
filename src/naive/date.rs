@@ -1301,6 +1301,24 @@ impl NaiveDate {
         NaiveWeek { date: *self, start }
     }
 
+    /// Returns whether this is a leap year.
+    ///
+    /// ```
+    /// # use chrono::NaiveDate;
+    /// let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+    ///
+    /// // Elapsed months and days since a reference date:
+    /// assert_eq!(NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().leap_year(), true);
+    /// assert_eq!(NaiveDate::from_ymd_opt(2001, 1, 1).unwrap().leap_year(), false);
+    /// assert_eq!(NaiveDate::from_ymd_opt(2002, 1, 1).unwrap().leap_year(), false);
+    /// assert_eq!(NaiveDate::from_ymd_opt(2003, 1, 1).unwrap().leap_year(), false);
+    /// assert_eq!(NaiveDate::from_ymd_opt(2004, 1, 1).unwrap().leap_year(), true);
+    /// assert_eq!(NaiveDate::from_ymd_opt(2100, 1, 1).unwrap().leap_year(), false);
+    /// ```
+    pub const fn leap_year(&self) -> bool {
+        self.ymdf & (1 << 3) == 0
+    }
+
     /// Difference between two dates expressed as whole months and the remaining days.
     /// This method takes into account the correct number of days of each passing month.
     ///
@@ -3100,5 +3118,21 @@ mod tests {
         assert!(dt.with_month0(4294967295).is_none());
         assert!(dt.with_day0(4294967295).is_none());
         assert!(dt.with_ordinal0(4294967295).is_none());
+    }
+
+    #[test]
+    fn test_leap_year() {
+        for year in 0..=MAX_YEAR {
+            let date = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
+            let is_leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+            eprintln!("{}, {}", year, is_leap);
+            assert_eq!(date.leap_year(), is_leap);
+            assert_eq!(date.leap_year(), date.with_ordinal(366).is_some());
+            assert_eq!(date.leap_year(), date.with_day(29).unwrap().with_month(2).is_some());
+            let year = year as u32;
+            let is_leap2 = year & 3 == 0 && (year.wrapping_mul(0xc28f5c29) != 0 || year & 15 == 0);
+            //let is_leap2 =  year % 4 == 0 && (((year % 25) & 3) != 0 || ((year % 25) & 15) == 0);
+            assert_eq!(date.leap_year(), is_leap2);
+        }
     }
 }
