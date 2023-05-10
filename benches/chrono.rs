@@ -6,6 +6,10 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use chrono::prelude::*;
 use chrono::{DateTime, FixedOffset, Local, Utc, __BenchYearFlags};
 
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
+use rand::distributions::{Distribution, Uniform};
+
 fn bench_datetime_parse_from_rfc2822(c: &mut Criterion) {
     c.bench_function("bench_datetime_parse_from_rfc2822", |b| {
         b.iter(|| {
@@ -62,9 +66,12 @@ fn bench_datetime_to_rfc3339(c: &mut Criterion) {
 
 fn bench_year_flags_from_year(c: &mut Criterion) {
     c.bench_function("bench_year_flags_from_year", |b| {
+        let mut rng = SmallRng::from_entropy();
+        let year_range = Uniform::from((i32::MIN>>13)..((i32::MAX>>13) + 1));
         b.iter(|| {
-            for year in -999i32..1000 {
-                __BenchYearFlags::from_year(year);
+            for _ in 0..200000 {
+                let year = year_range.sample(&mut rng);
+                let _ = black_box(__BenchYearFlags::from_year(year));
             }
         })
     });
@@ -122,6 +129,45 @@ fn bench_num_days_from_ce(c: &mut Criterion) {
     }
 }
 
+fn bench_leap_year1(c: &mut Criterion) {
+    c.bench_function("bench_leap_year1", |b| {
+        let mut rng = SmallRng::from_entropy();
+        let year_range = Uniform::from((i32::MIN>>13)..((i32::MAX>>13) + 1));
+        b.iter(|| {
+            for _ in 0..200000 {
+                let year = year_range.sample(&mut rng);
+                let _ = black_box(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+            }
+        })
+    });
+}
+
+fn bench_leap_year2(c: &mut Criterion) {
+    c.bench_function("bench_leap_year2", |b| {
+        let mut rng = SmallRng::from_entropy();
+        let year_range = Uniform::from((i32::MIN>>13)..((i32::MAX>>13) + 1));
+        b.iter(|| {
+            for _ in 0..200000 {
+                let year = year_range.sample(&mut rng);
+                let _ = black_box((year & 3 == 0) & ((year & 15 == 0) || ((year as u32).wrapping_mul(0xc28f5c29) < 0x0a3d70a3)));
+            }
+        })
+    });
+}
+
+fn bench_leap_year3(c: &mut Criterion) {
+    c.bench_function("bench_leap_year3", |b| {
+        let mut rng = SmallRng::from_entropy();
+        let year_range = Uniform::from((i32::MIN>>13)..((i32::MAX>>13) + 1));
+        b.iter(|| {
+            for _ in 0..200000 {
+                let year = year_range.sample(&mut rng);
+                let _ = black_box((year & 3 == 0) & ((year & 15 != 0) || (year % 25 == 0)));
+            }
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_datetime_parse_from_rfc2822,
@@ -132,6 +178,9 @@ criterion_group!(
     bench_year_flags_from_year,
     bench_num_days_from_ce,
     bench_get_local_time,
+    bench_leap_year1,
+    bench_leap_year2,
+    bench_leap_year3,
 );
 
 criterion_main!(benches);

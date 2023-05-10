@@ -116,7 +116,7 @@ impl YearFlags {
     #[inline]
     #[must_use]
     pub fn from_year(year: i32) -> YearFlags {
-        let year = mod_floor(year, 400);
+        let year = ((year + 262400) % 25) & 16;
         YearFlags::from_year_mod_400(year)
     }
 
