@@ -1166,22 +1166,13 @@ impl<Tz: TimeZone> AddAssign<Duration> for DateTime<Tz> {
     }
 }
 
-fn add_with_leapsecond<T>(lhs: &T, rhs: i32) -> T
-where
-    T: Timelike + Add<OldDuration, Output = T>,
-{
-    // extract and temporarily remove the fractional part and later recover it
-    let nanos = lhs.nanosecond();
-    let lhs = lhs.with_nanosecond(0).unwrap();
-    (lhs + OldDuration::seconds(i64::from(rhs))).with_nanosecond(nanos).unwrap()
-}
-
 impl<Tz: TimeZone> Add<FixedOffset> for DateTime<Tz> {
     type Output = DateTime<Tz>;
 
     #[inline]
-    fn add(self, rhs: FixedOffset) -> DateTime<Tz> {
-        add_with_leapsecond(&self, rhs.local_minus_utc())
+    fn add(mut self, rhs: FixedOffset) -> DateTime<Tz> {
+        self.datetime = self.naive_utc().checked_add_offset(rhs).unwrap();
+        self
     }
 }
 
@@ -1236,8 +1227,9 @@ impl<Tz: TimeZone> Sub<FixedOffset> for DateTime<Tz> {
     type Output = DateTime<Tz>;
 
     #[inline]
-    fn sub(self, rhs: FixedOffset) -> DateTime<Tz> {
-        add_with_leapsecond(&self, -rhs.local_minus_utc())
+    fn sub(mut self, rhs: FixedOffset) -> DateTime<Tz> {
+        self.datetime = self.naive_utc().checked_sub_offset(rhs).unwrap();
+        self
     }
 }
 
