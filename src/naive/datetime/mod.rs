@@ -20,8 +20,9 @@ use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed,
 use crate::format::{Fixed, Item, Numeric, Pad};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
 use crate::offset::Utc;
-use crate::{DateTime, Datelike, LocalResult, Months, TimeZone, Timelike, Weekday};
-
+use crate::{
+    try_opt, DateTime, Datelike, FixedOffset, LocalResult, Months, TimeZone, Timelike, Weekday,
+};
 #[cfg(feature = "rustc-serialize")]
 pub(super) mod rustc_serialize;
 
@@ -664,6 +665,17 @@ impl NaiveDateTime {
         Some(Self { date: self.date.checked_add_months(rhs)?, time: self.time })
     }
 
+    /// Adds given `FixedOffset` to the current datetime.
+    /// Returns `None` if the result would be outside the valid range for [`NaiveDateTime`].
+    ///
+    /// This method is similar to [`checked_add_signed`](#method.checked_add_offset), but preserves
+    /// leap seconds.
+    #[must_use]
+    pub const fn checked_add_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
+        let (time, days) = self.time.overflowing_add_offset(rhs);
+        Some(NaiveDateTime { date: try_opt!(self.date.add_days(days)), time })
+    }
+
     /// Subtracts given `Duration` from the current date and time.
     ///
     /// As a part of Chrono's [leap second handling](./struct.NaiveTime.html#leap-second-handling),
@@ -738,6 +750,16 @@ impl NaiveDateTime {
 
         let date = self.date.checked_sub_signed(OldDuration::seconds(rhs))?;
         Some(NaiveDateTime { date, time })
+    }
+
+    /// Subtracts given `FixedOffset` from the current datetime.
+    /// Returns `None` if the result would be outside the valid range for [`NaiveDateTime`].
+    ///
+    /// This method is similar to [`checked_sub_signed`](#method.checked_sub_signed), but preserves
+    /// leap seconds.
+    pub const fn checked_sub_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
+        let (time, days) = self.time.overflowing_sub_offset(rhs);
+        Some(NaiveDateTime { date: try_opt!(self.date.add_days(days)), time })
     }
 
     /// Subtracts given `Months` from the current date and time.
