@@ -4,17 +4,14 @@
 //! The time zone which has a fixed offset from UTC.
 
 use core::fmt;
-use core::ops::{Add, Sub};
 use core::str::FromStr;
 
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{LocalResult, Offset, TimeZone};
-use crate::duration::Duration as OldDuration;
-use crate::format::{scan, OUT_OF_RANGE};
-use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
-use crate::{DateTime, ParseError, Timelike};
+use crate::format::{scan, ParseError, OUT_OF_RANGE};
+use crate::naive::{NaiveDate, NaiveDateTime};
 
 /// The time zone with fixed offset, from UTC-23:59:59 to UTC+23:59:59.
 ///
@@ -180,75 +177,6 @@ impl arbitrary::Arbitrary<'_> for FixedOffset {
         let fixed_offset = FixedOffset::east_opt(secs)
             .expect("Could not generate a valid chrono::FixedOffset. It looks like implementation of Arbitrary for FixedOffset is erroneous.");
         Ok(fixed_offset)
-    }
-}
-
-// addition or subtraction of FixedOffset to/from Timelike values is the same as
-// adding or subtracting the offset's local_minus_utc value
-// but keep keeps the leap second information.
-// this should be implemented more efficiently, but for the time being, this is generic right now.
-
-fn add_with_leapsecond<T>(lhs: &T, rhs: i32) -> T
-where
-    T: Timelike + Add<OldDuration, Output = T>,
-{
-    // extract and temporarily remove the fractional part and later recover it
-    let nanos = lhs.nanosecond();
-    let lhs = lhs.with_nanosecond(0).unwrap();
-    (lhs + OldDuration::seconds(i64::from(rhs))).with_nanosecond(nanos).unwrap()
-}
-
-impl Add<FixedOffset> for NaiveTime {
-    type Output = NaiveTime;
-
-    #[inline]
-    fn add(self, rhs: FixedOffset) -> NaiveTime {
-        self.overflowing_add_offset(rhs).0
-    }
-}
-
-impl Sub<FixedOffset> for NaiveTime {
-    type Output = NaiveTime;
-
-    #[inline]
-    fn sub(self, rhs: FixedOffset) -> NaiveTime {
-        self.overflowing_sub_offset(rhs).0
-    }
-}
-
-impl Add<FixedOffset> for NaiveDateTime {
-    type Output = NaiveDateTime;
-
-    #[inline]
-    fn add(self, rhs: FixedOffset) -> NaiveDateTime {
-        self.checked_add_offset(rhs).unwrap()
-    }
-}
-
-impl Sub<FixedOffset> for NaiveDateTime {
-    type Output = NaiveDateTime;
-
-    #[inline]
-    fn sub(self, rhs: FixedOffset) -> NaiveDateTime {
-        self.checked_sub_offset(rhs).unwrap()
-    }
-}
-
-impl<Tz: TimeZone> Add<FixedOffset> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    fn add(self, rhs: FixedOffset) -> DateTime<Tz> {
-        add_with_leapsecond(&self, rhs.local_minus_utc)
-    }
-}
-
-impl<Tz: TimeZone> Sub<FixedOffset> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    fn sub(self, rhs: FixedOffset) -> DateTime<Tz> {
-        add_with_leapsecond(&self, -rhs.local_minus_utc)
     }
 }
 
