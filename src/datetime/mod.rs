@@ -18,10 +18,10 @@ use std::string::ToString;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::format::DelayedFormat;
 #[cfg(feature = "unstable-locales")]
 use crate::format::Locale;
+#[cfg(any(feature = "alloc", feature = "std", test))]
+use crate::format::{offset_item, Colons, DelayedFormat, OffsetFormat, OffsetPrecision, Pad};
 use crate::format::{parse, parse_and_remainder, parse_rfc3339};
 use crate::format::{Fixed, Item, TOO_LONG};
 use crate::format::{ParseError, ParseResult, Parsed, StrftimeItems};
@@ -573,10 +573,11 @@ impl<Tz: TimeZone> DateTime<Tz> {
             __NonExhaustive => unreachable!(),
         };
 
-        let tzitem = Item::Fixed(if use_z {
-            Fixed::TimezoneOffsetColonZ
-        } else {
-            Fixed::TimezoneOffsetColon
+        let tzitem = offset_item(OffsetFormat {
+            precision: OffsetPrecision::Minutes,
+            colons: Colons::Colon,
+            allow_zulu: use_z,
+            padding: Pad::Zero,
         });
 
         let dt = self.fixed_offset();

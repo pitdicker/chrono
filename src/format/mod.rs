@@ -376,6 +376,12 @@ fn offset(
     }))
 }
 
+// We can't create an `UtcOffset` item outside of this module because the types are private.
+// Remove this workaround when `UtcOffset` is moved to the `Fixed` enum.
+pub(crate) fn offset_item(offset_format: OffsetFormat) -> Item<'static> {
+    internal_fixed(InternalInternal::UtcOffset(offset_format))
+}
+
 /// An error from the `parse` function.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub struct ParseError(ParseErrorKind);
