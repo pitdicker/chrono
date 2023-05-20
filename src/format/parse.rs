@@ -232,7 +232,7 @@ fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a st
 /// - `UTC` is accepted as a valid timezone name/offset.
 /// - There can be spaces between any of the components.
 /// - The colon in the offset may be missing.
-fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, s: &'a str) -> ParseResult<(&'a str, ())> {
+fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a str, ())> {
     const DATE_ITEMS: &[Item<'static>] = &[
         Item::Numeric(Numeric::Year, Pad::Zero),
         Item::Space(""),
@@ -252,21 +252,33 @@ fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, s: &'a str) -> ParseResult<(&'
         Item::Numeric(Numeric::Second, Pad::Zero),
         Item::Fixed(Fixed::Nanosecond),
         Item::Space(""),
-        Item::Fixed(Fixed::TimezoneOffsetZ),
-        Item::Space(""),
     ];
 
-    match parse_internal(parsed, s, DATE_ITEMS.iter()) {
-        Err((remainder, e)) if e.0 == ParseErrorKind::TooLong => {
-            if remainder.starts_with('T') || remainder.starts_with(' ') {
-                parse(parsed, &remainder[1..], TIME_ITEMS.iter()).map(|_| (s, ()))
-            } else {
-                Err(INVALID)
-            }
-        }
-        Err((_s, e)) => Err(e),
-        Ok(_) => Err(NOT_ENOUGH),
+    s = match parse_internal(parsed, s, DATE_ITEMS.iter()) {
+        Err((remainder, e)) if e.0 == ParseErrorKind::TooLong => remainder,
+        Err((_s, e)) => return Err(e),
+        Ok(_) => return Err(NOT_ENOUGH),
+    };
+    if !(s.starts_with('T') || s.starts_with(' ')) {
+        return Err(INVALID);
     }
+    s = match parse_internal(parsed, &s[1..], TIME_ITEMS.iter()) {
+        Err((remainder, e)) if e.0 == ParseErrorKind::TooLong => remainder,
+        Err((_s, e)) => return Err(e),
+        Ok(_) => return Err(NOT_ENOUGH),
+    };
+    s = s.trim_start();
+    let (s, offset) = if s.starts_with("UTC") || s.starts_with("utc") {
+        (&s[3..], 0)
+    } else {
+        scan::timezone_offset(s, scan::colon_or_space, true, false, true)?
+    };
+    parsed.set_offset(i64::from(offset))?;
+
+    if !s.is_empty() {
+        return Err(TOO_LONG);
+    }
+    Ok((s, ()))
 }
 
 /// Tries to parse given string into `parsed` with given formatting items.
