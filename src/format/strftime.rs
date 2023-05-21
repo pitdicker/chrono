@@ -156,10 +156,10 @@ Notes:
    China Daylight Time.
 */
 
-use super::{fixed, internal_fixed, num, num0, nums};
+use super::{fixed, internal_fixed, num, num0, nums, offset};
 #[cfg(feature = "unstable-locales")]
 use super::{locales, Locale};
-use super::{Fixed, InternalInternal, Item, Numeric, Pad};
+use super::{Colons, Fixed, InternalInternal, Item, Numeric, OffsetPrecision, Pad};
 
 /// Parsing iterator for `strftime`-like format strings.
 #[derive(Clone, Debug)]
@@ -384,22 +384,22 @@ impl<'a> StrftimeItems<'a> {
                     'y' => num0(YearMod100),
                     'z' => {
                         if is_alternate {
-                            internal_fixed(TimezoneOffsetPermissive)
+                            offset(OffsetPrecision::OptionalMinutes, Colons::Maybe, true, pad_override)
                         } else {
-                            fixed(Fixed::TimezoneOffset)
+                            offset(OffsetPrecision::Minutes, Colons::Maybe, false, pad_override)
                         }
                     }
                     '+' => fixed(Fixed::RFC3339),
                     ':' => {
                         if remainder.starts_with("::z") {
                             remainder = &remainder[3..];
-                            fixed(Fixed::TimezoneOffsetTripleColon)
+                            offset(OffsetPrecision::Hours, Colons::None, is_alternate, pad_override)
                         } else if remainder.starts_with(":z") {
                             remainder = &remainder[2..];
-                            fixed(Fixed::TimezoneOffsetDoubleColon)
+                            offset(OffsetPrecision::Seconds, Colons::Colon, is_alternate, pad_override)
                         } else if remainder.starts_with('z') {
                             remainder = &remainder[1..];
-                            fixed(Fixed::TimezoneOffsetColon)
+                            offset(OffsetPrecision::Minutes, Colons::Colon, is_alternate, pad_override)
                         } else {
                             Item::Error
                         }
@@ -499,8 +499,8 @@ mod tests {
     use crate::format::Item::{self, Literal, Space};
     #[cfg(feature = "unstable-locales")]
     use crate::format::Locale;
-    use crate::format::{fixed, internal_fixed, num, num0, nums};
-    use crate::format::{Fixed, InternalInternal, Numeric::*};
+    use crate::format::{num, num0, nums, offset, Colons};
+    use crate::format::{Numeric::*, OffsetPrecision};
     #[cfg(any(feature = "alloc", feature = "std"))]
     use crate::{DateTime, FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
 
@@ -554,11 +554,9 @@ mod tests {
         assert_eq!(parse_and_collect("%-e"), [num(Day)]);
         assert_eq!(parse_and_collect("%0e"), [num0(Day)]);
         assert_eq!(parse_and_collect("%_e"), [nums(Day)]);
-        assert_eq!(parse_and_collect("%z"), [fixed(Fixed::TimezoneOffset)]);
-        assert_eq!(
-            parse_and_collect("%#z"),
-            [internal_fixed(InternalInternal::TimezoneOffsetPermissive)]
-        );
+        assert_eq!(parse_and_collect("%z"), [offset(OffsetPrecision::Minutes, Colons::Maybe, false, None)]);
+        assert_eq!(parse_and_collect("%:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%#z"), [offset(OffsetPrecision::OptionalMinutes, Colons::Maybe, true, None)]);
         assert_eq!(parse_and_collect("%#m"), [Item::Error]);
     }
 
@@ -713,31 +711,6 @@ mod tests {
         assert_eq!(nd.format_localized("%x", Locale::de_DE).to_string(), "08.07.2001");
         assert_eq!(nd.format_localized("%F", Locale::de_DE).to_string(), "2001-07-08");
         assert_eq!(nd.format_localized("%v", Locale::de_DE).to_string(), " 8-Jul-2001");
-    }
-
-    /// Ensure parsing a timestamp with the parse-only stftime formatter "%#z" does
-    /// not cause a panic.
-    ///
-    /// See <https://github.com/chronotope/chrono/issues/1139>.
-    #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    fn test_parse_only_timezone_offset_permissive_no_panic() {
-        use crate::NaiveDate;
-        use crate::{FixedOffset, TimeZone};
-        use std::fmt::Write;
-
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2001, 7, 8)
-                    .unwrap()
-                    .and_hms_nano_opt(0, 34, 59, 1_026_490_708)
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let mut buf = String::new();
-        let _ = write!(buf, "{}", dt.format("%#z")).expect_err("parse-only formatter should fail");
     }
 
     #[test]

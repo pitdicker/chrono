@@ -407,6 +407,9 @@ fn format_inner(
                     let nano = t.nanosecond() % 1_000_000_000;
                     write!(result, ".{:09}", nano)
                 }),
+                Internal(InternalFixed { val: InternalInternal::UtcOffset(offset_format) }) => {
+                    off.map(|&(_, off)| offset_format.format(result, off))
+                }
                 Internal(InternalFixed { val: InternalInternal::Nanosecond3NoDot }) => {
                     time.map(|t| {
                         let nano = t.nanosecond() % 1_000_000_000;
@@ -465,9 +468,6 @@ fn format_inner(
                     }
                     .format(result, off)
                 }),
-                Internal(InternalFixed { val: InternalInternal::TimezoneOffsetPermissive }) => {
-                    return Err(fmt::Error);
-                }
                 RFC2822 =>
                 // same as `%a, %d %b %Y %H:%M:%S %z`
                 {

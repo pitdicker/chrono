@@ -261,15 +261,10 @@ pub struct InternalFixed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum InternalInternal {
-    /// Same as [`TimezoneOffsetColonZ`](#variant.TimezoneOffsetColonZ), but
-    /// allows missing minutes (per [ISO 8601][iso8601]).
-    ///
-    /// # Panics
-    ///
-    /// If you try to use this for printing.
-    ///
-    /// [iso8601]: https://en.wikipedia.org/wiki/ISO_8601#Time_offsets_from_UTC
-    TimezoneOffsetPermissive,
+    /// Offset from the local time to UTC (`+09:00` or `-03:30` or `+00:00`).
+    //
+    // FIXME: move this to the `Fixed` enum with the next breaking change.
+    UtcOffset(OffsetFormat),
     /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 3 and there is no leading dot.
     Nanosecond3NoDot,
     /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 6 and there is no leading dot.
@@ -365,6 +360,20 @@ const fn fixed(fixed: Fixed) -> Item<'static> {
 
 const fn internal_fixed(val: InternalInternal) -> Item<'static> {
     Item::Fixed(Fixed::Internal(InternalFixed { val }))
+}
+
+fn offset(
+    precision: OffsetPrecision,
+    colons: Colons,
+    allow_zulu: bool,
+    padding: Option<Pad>,
+) -> Item<'static> {
+    internal_fixed(InternalInternal::UtcOffset(OffsetFormat {
+        precision,
+        colons,
+        allow_zulu,
+        padding: padding.unwrap_or(Pad::Zero),
+    }))
 }
 
 /// An error from the `parse` function.
