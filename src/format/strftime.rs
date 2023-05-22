@@ -319,7 +319,7 @@ impl<'a> Iterator for StrftimeItems<'a> {
                 let spec = next!();
                 let pad_override = match spec {
                     '-' => Some(Pad::None),
-                    '0' => Some(Pad::Zero),
+                    '0' => Some(Pad::Required),
                     '_' => Some(Pad::Space),
                     _ => None,
                 };
@@ -620,12 +620,12 @@ fn test_strftime_items() {
     assert_eq!(parse_and_collect("%.j"), [Item::Error]);
     assert_eq!(parse_and_collect("%:j"), [Item::Error]);
     assert_eq!(parse_and_collect("%-j"), [num!(Ordinal)]);
-    assert_eq!(parse_and_collect("%0j"), [num0!(Ordinal)]);
+    assert_eq!(parse_and_collect("%0j"), [numr!(Ordinal)]);
     assert_eq!(parse_and_collect("%_j"), [nums!(Ordinal)]);
     assert_eq!(parse_and_collect("%.e"), [Item::Error]);
     assert_eq!(parse_and_collect("%:e"), [Item::Error]);
     assert_eq!(parse_and_collect("%-e"), [num!(Day)]);
-    assert_eq!(parse_and_collect("%0e"), [num0!(Day)]);
+    assert_eq!(parse_and_collect("%0e"), [numr!(Day)]);
     assert_eq!(parse_and_collect("%_e"), [nums!(Day)]);
     assert_eq!(parse_and_collect("%z"), [fix!(TimezoneOffset)]);
     assert_eq!(parse_and_collect("%:z"), [fix!(TimezoneOffsetColon)]);

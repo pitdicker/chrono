@@ -359,7 +359,7 @@ where
                 }
             }
 
-            Item::Numeric(ref spec, ref _pad) => {
+            Item::Numeric(ref spec, ref pad) => {
                 use super::Numeric::*;
                 type Setter = fn(&mut Parsed, i64) -> ParseResult<()>;
 
@@ -389,18 +389,23 @@ where
                     Internal(ref int) => match int._dummy {},
                 };
 
+                if *pad == Pad::Space {
+                    s = s.trim_left();
+                }
+                let min_width = if *pad == Pad::Required { width } else { 1 };
+
                 let v = if signed {
                     if s.starts_with('-') {
-                        let v = try_consume!(scan::number(&s[1..], 1, usize::MAX));
+                        let v = try_consume!(scan::number(&s[1..], min_width, usize::MAX));
                         0i64.checked_sub(v).ok_or((s, OUT_OF_RANGE))?
                     } else if s.starts_with('+') {
-                        try_consume!(scan::number(&s[1..], 1, usize::MAX))
+                        try_consume!(scan::number(&s[1..], min_width, usize::MAX))
                     } else {
                         // if there is no explicit sign, we respect the original `width`
-                        try_consume!(scan::number(s, 1, width))
+                        try_consume!(scan::number(s, min_width, width))
                     }
                 } else {
-                    try_consume!(scan::number(s, 1, width))
+                    try_consume!(scan::number(s, min_width, width))
                 };
                 set(parsed, v).map_err(|e| (s, e))?;
             }

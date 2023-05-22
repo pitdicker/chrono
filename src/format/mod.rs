@@ -78,9 +78,14 @@ pub enum Pad {
     /// No padding.
     None,
     /// Zero (`0`) padding.
+    /// When parsing this means padding must either be `0` or absent.
     Zero,
     /// Space padding.
+    /// When parsing this means padding must either be ` ` or absent.
+    /// Any number of spaces is accepted.
     Space,
+    /// Same as `Zero`, but padding is required when parsing.
+    Required,
 }
 
 /// Numeric item types.
@@ -333,6 +338,11 @@ macro_rules! nums {
         Item::Numeric(Numeric::$x, Pad::Space)
     };
 }
+macro_rules! numr {
+    ($x:ident) => {
+        Item::Numeric(Numeric::$x, Pad::Required)
+    };
+}
 macro_rules! fix {
     ($x:ident) => {
         Item::Fixed(Fixed::$x)
@@ -562,13 +572,13 @@ fn format_inner(
                     // non-four-digit years require an explicit sign as per ISO 8601
                     match *pad {
                         Pad::None => write!(result, "{:+}", v),
-                        Pad::Zero => write!(result, "{:+01$}", v, width + 1),
+                        Pad::Zero | Pad::Required => write!(result, "{:+01$}", v, width + 1),
                         Pad::Space => write!(result, "{:+1$}", v, width + 1),
                     }
                 } else {
                     match *pad {
                         Pad::None => write!(result, "{}", v),
-                        Pad::Zero => write!(result, "{:01$}", v, width),
+                        Pad::Zero | Pad::Required => write!(result, "{:01$}", v, width),
                         Pad::Space => write!(result, "{:1$}", v, width),
                     }
                 }?
