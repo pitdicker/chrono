@@ -276,12 +276,16 @@ fn test_date_from_str() {
 #[test]
 fn test_time_parse_from_str() {
     let hms = |h, m, s| NaiveTime::from_hms_opt(h, m, s).unwrap();
-    assert_eq!(
-        NaiveTime::parse_from_str("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"),
-        Ok(hms(12, 34, 56))
-    ); // ignore date and offset
-    assert_eq!(NaiveTime::parse_from_str("PM 12:59", "%P %H:%M"), Ok(hms(12, 59, 0)));
-    assert!(NaiveTime::parse_from_str("12:3456", "%H:%M:%S").is_err());
+    let parse = NaiveTime::parse_from_str;
+    assert_eq!(parse("12:34:56", "%H:%M:%S"), Ok(hms(12, 34, 56)));
+    assert!(parse("12:3456", "%H:%M:%S").is_err());
+    // Missing minutes and/or are allowed
+    assert_eq!(parse("12:34", "%H:%M"), Ok(hms(12, 34, 0)));
+    assert_eq!(parse("12", "%H"), Ok(hms(12, 0, 0)));
+    // Combination of AM/PM and 24h is allowed if they agree
+    assert_eq!(parse("PM 12:59", "%P %H:%M"), Ok(hms(12, 59, 0)));
+    // ignore date and offset
+    assert_eq!(parse("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"), Ok(hms(12, 34, 56)));
 }
 
 #[test]
