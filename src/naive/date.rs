@@ -552,12 +552,24 @@ impl NaiveDate {
     ///            Ok(NaiveDate::from_ymd_opt(2014, 5, 17).unwrap()));
     /// ```
     ///
-    /// Out-of-bound dates or insufficient fields are errors.
+    /// If the format string doesn't contain a day field, it defaults to the first day.
+    /// If year and month are given it defaults to the first day of the month.
+    /// If year and week are given it defaults to the first day of the week.
     ///
     /// ```
     /// # use chrono::NaiveDate;
     /// # let parse_from_str = NaiveDate::parse_from_str;
-    /// assert!(parse_from_str("2015/9", "%Y/%m").is_err());
+    /// assert_eq!(parse_from_str("2015/9", "%Y/%m"),
+    ///            Ok(NaiveDate::from_ymd_opt(2015, 9, 1).unwrap()));
+    /// assert_eq!(parse_from_str("2015 week 6", "%Y week %W"),
+    ///            Ok(NaiveDate::from_ymd_opt(2015, 2, 9).unwrap()));
+    /// ```
+    ///
+    /// Out-of-bound dates are invalid.
+    ///
+    /// ```
+    /// # use chrono::NaiveDate;
+    /// # let parse_from_str = NaiveDate::parse_from_str;
     /// assert!(parse_from_str("2015/9/31", "%Y/%m/%d").is_err());
     /// ```
     ///
@@ -3012,31 +3024,19 @@ mod tests {
     #[test]
     fn test_date_parse_from_str() {
         let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-        assert_eq!(
-            NaiveDate::parse_from_str("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"),
-            Ok(ymd(2014, 5, 7))
-        ); // ignore time and offset
-        assert_eq!(
-            NaiveDate::parse_from_str("2015-W06-1=2015-033", "%G-W%V-%u = %Y-%j"),
-            Ok(ymd(2015, 2, 2))
-        );
-        assert_eq!(
-            NaiveDate::parse_from_str("Fri, 09 Aug 13", "%a, %d %b %y"),
-            Ok(ymd(2013, 8, 9))
-        );
-        assert!(NaiveDate::parse_from_str("Sat, 09 Aug 2013", "%a, %d %b %Y").is_err());
-        assert!(NaiveDate::parse_from_str("2014-57", "%Y-%m-%d").is_err());
-        assert!(NaiveDate::parse_from_str("2014", "%Y").is_err()); // insufficient
-
-        assert_eq!(
-            NaiveDate::parse_from_str("2020-01-0", "%Y-%W-%w").ok(),
-            NaiveDate::from_ymd_opt(2020, 1, 12),
-        );
-
-        assert_eq!(
-            NaiveDate::parse_from_str("2019-01-0", "%Y-%W-%w").ok(),
-            NaiveDate::from_ymd_opt(2019, 1, 13),
-        );
+        let parse = NaiveDate::parse_from_str;
+        assert_eq!(parse("2015-W06-1=2015-033", "%G-W%V-%u = %Y-%j"), Ok(ymd(2015, 2, 2)));
+        assert_eq!(parse("Fri, 09 Aug 13", "%a, %d %b %y"), Ok(ymd(2013, 8, 9)));
+        assert!(parse("Sat, 09 Aug 2013", "%a, %d %b %Y").is_err());
+        assert!(parse("2014-57", "%Y-%m-%d").is_err());
+        assert_eq!(parse("2020-01-0", "%Y-%W-%w"), Ok(ymd(2020, 1, 12)));
+        assert_eq!(parse("2019-01-0", "%Y-%W-%w"), Ok(ymd(2019, 1, 13)));
+        // allow missing day
+        assert_eq!(parse("2023-01", "%Y-%m"), Ok(ymd(2023, 1, 1)));
+        assert_eq!(parse("2023-W01", "%G-W%V"), Ok(ymd(2023, 1, 2)));
+        assert_eq!(parse("2023-w01", "%Y-w%U"), Ok(ymd(2023, 1, 1)));
+        // ignore time and offset
+        assert_eq!(parse("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"), Ok(ymd(2014, 5, 7)));
     }
 
     #[test]
