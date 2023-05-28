@@ -284,8 +284,10 @@ fn test_time_parse_from_str() {
     assert_eq!(parse("12", "%H"), Ok(hms(12, 0, 0)));
     // Combination of AM/PM and 24h is allowed if they agree
     assert_eq!(parse("PM 12:59", "%P %H:%M"), Ok(hms(12, 59, 0)));
-    // ignore date and offset
-    assert_eq!(parse("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"), Ok(hms(12, 34, 56)));
+    // Unused fields are an error
+    assert!(parse("2014-5-7T12:34:56", "%Y-%m-%dT%H:%M:%S").is_err());
+    assert!(parse("12:34:56+09:30", "%%H:%M:%S%z").is_err());
+    assert!(parse("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z").is_err());
 }
 
 #[test]

@@ -293,6 +293,23 @@ impl Parsed {
             || self.timestamp.is_some()
     }
 
+    fn has_date_fields(&self) -> bool {
+        self.year.is_some()
+            || self.year_div_100.is_some()
+            || self.year_mod_100.is_some()
+            || self.isoyear.is_some()
+            || self.isoyear_div_100.is_some()
+            || self.isoyear_mod_100.is_some()
+            || self.month.is_some()
+            || self.week_from_sun.is_some()
+            || self.week_from_mon.is_some()
+            || self.isoweek.is_some()
+            || self.weekday.is_some()
+            || self.ordinal.is_some()
+            || self.day.is_some()
+            || self.timestamp.is_some()
+    }
+
     /// Returns a parsed naive date out of given fields.
     ///
     /// This method is able to determine the date from given subset of fields:
@@ -432,6 +449,9 @@ impl Parsed {
     ///
     /// It is able to handle leap seconds when given second is 60.
     pub fn to_naive_time(&self) -> ParseResult<NaiveTime> {
+        if self.has_date_fields() || self.offset.is_some() {
+            return Err(BAD_FORMAT);
+        }
         self.to_naive_time_inner(true)
     }
 
