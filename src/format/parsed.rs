@@ -4,7 +4,7 @@
 //! A collection of parsed date and time items.
 //! They can be constructed incrementally while being checked for consistency.
 
-use super::{ParseResult, IMPOSSIBLE, NOT_ENOUGH, OUT_OF_RANGE};
+use super::{ParseResult, BAD_FORMAT, IMPOSSIBLE, NOT_ENOUGH, OUT_OF_RANGE};
 use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::offset::{FixedOffset, LocalResult, Offset, TimeZone};
 use crate::oldtime::Duration as OldDuration;
@@ -284,6 +284,15 @@ impl Parsed {
         set_if_consistent(&mut self.offset, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)
     }
 
+    fn has_time_fields(&self) -> bool {
+        self.hour_div_12.is_some()
+            || self.hour_mod_12.is_some()
+            || self.minute.is_some()
+            || self.second.is_some()
+            || self.nanosecond.is_some()
+            || self.timestamp.is_some()
+    }
+
     /// Returns a parsed naive date out of given fields.
     ///
     /// This method is able to determine the date from given subset of fields:
@@ -299,6 +308,9 @@ impl Parsed {
     /// Gregorian year and ISO week date year can have their century number (`*_div_100`) omitted,
     /// the two-digit year is used to guess the century number then.
     pub fn to_naive_date(&self) -> ParseResult<NaiveDate> {
+        if self.has_time_fields() || self.offset.is_some() {
+            return Err(BAD_FORMAT);
+        }
         self.to_naive_date_inner(true)
     }
 
@@ -482,13 +494,7 @@ impl Parsed {
         use_default: bool,
     ) -> ParseResult<NaiveDateTime> {
         let date = self.to_naive_date_inner(use_default);
-        let time = if use_default
-            && self.hour_div_12.is_none()
-            && self.hour_mod_12.is_none()
-            && self.minute.is_none()
-            && self.second.is_none()
-            && self.nanosecond.is_none()
-        {
+        let time = if use_default && !self.has_time_fields() {
             Ok(NaiveTime::MIN)
         } else {
             self.to_naive_time_inner(use_default)

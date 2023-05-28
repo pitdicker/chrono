@@ -543,13 +543,18 @@ impl NaiveDate {
     ///            Ok(NaiveDate::from_ymd_opt(2015, 9, 5).unwrap()));
     /// ```
     ///
-    /// Time and offset is ignored for the purpose of parsing.
+    /// Time and offset will return an error, parse to a [`NaiveDateTime`] or
+    /// `DateTime<FixedOffset>` first.
     ///
     /// ```
-    /// # use chrono::NaiveDate;
-    /// # let parse_from_str = NaiveDate::parse_from_str;
-    /// assert_eq!(parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"),
-    ///            Ok(NaiveDate::from_ymd_opt(2014, 5, 17).unwrap()));
+    /// use chrono::{DateTime, FixedOffset, NaiveDate};
+    /// use chrono::format::ParseErrorKind;
+    ///
+    /// let result = NaiveDate::parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z");
+    /// assert_eq!(result.unwrap_err().kind(), ParseErrorKind::BadFormat);
+    /// let dt =
+    ///     DateTime::<FixedOffset>::parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z");
+    /// assert_eq!(dt.unwrap().date_naive(), NaiveDate::from_ymd_opt(2014, 5, 17).unwrap());
     /// ```
     ///
     /// If the format string doesn't contain a day field, it defaults to the first day.
@@ -3035,8 +3040,6 @@ mod tests {
         assert_eq!(parse("2023-01", "%Y-%m"), Ok(ymd(2023, 1, 1)));
         assert_eq!(parse("2023-W01", "%G-W%V"), Ok(ymd(2023, 1, 2)));
         assert_eq!(parse("2023-w01", "%Y-w%U"), Ok(ymd(2023, 1, 1)));
-        // ignore time and offset
-        assert_eq!(parse("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"), Ok(ymd(2014, 5, 7)));
     }
 
     #[test]
