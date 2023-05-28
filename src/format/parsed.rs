@@ -505,6 +505,9 @@ impl Parsed {
     /// from date and time fields or a single [`timestamp`](#structfield.timestamp) field.
     /// Either way those fields have to be consistent to each other.
     pub fn to_naive_datetime_with_offset(&self, offset: i32) -> ParseResult<NaiveDateTime> {
+        if self.offset.is_some() {
+            return Err(BAD_FORMAT);
+        }
         self.to_naive_datetime_with_offset_inner(offset, true)
     }
 
@@ -653,7 +656,7 @@ impl Parsed {
 
         // `guessed_offset` should be correct when `self.timestamp` is given.
         // it will be 0 otherwise, but this is fine as the algorithm ignores offset for that case.
-        let datetime = self.to_naive_datetime_with_offset(guessed_offset)?;
+        let datetime = self.to_naive_datetime_with_offset_inner(guessed_offset, false)?;
         match tz.from_local_datetime(&datetime) {
             LocalResult::None => Err(IMPOSSIBLE),
             LocalResult::Single(t) => {

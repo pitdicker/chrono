@@ -252,13 +252,18 @@ impl NaiveDateTime {
     ///            Ok(NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_micro_opt(13, 23, 45, 678_900).unwrap()));
     /// ```
     ///
-    /// Offset is ignored for the purpose of parsing.
+    /// An included offset will return an error, parse to a `DateTime<FixedOffset>` first.
     ///
     /// ```
-    /// # use chrono::{NaiveDateTime, NaiveDate};
-    /// # let parse_from_str = NaiveDateTime::parse_from_str;
-    /// assert_eq!(parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"),
-    ///            Ok(NaiveDate::from_ymd_opt(2014, 5, 17).unwrap().and_hms_opt(12, 34, 56).unwrap()));
+    /// use chrono::{DateTime, NaiveDateTime, NaiveDate, FixedOffset};
+    /// use chrono::format::ParseErrorKind;
+    ///
+    /// let r = NaiveDateTime::parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z");
+    /// assert_eq!(r.unwrap_err().kind(), ParseErrorKind::BadFormat);
+    /// let dt =
+    ///     DateTime::<FixedOffset>::parse_from_str("2014-5-17T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z");
+    /// assert_eq!(dt.unwrap().naive_local(),
+    ///            NaiveDate::from_ymd_opt(2014, 5, 17).unwrap().and_hms_opt(12, 34, 56).unwrap());
     /// ```
     ///
     /// [Leap seconds](./struct.NaiveTime.html#leap-second-handling) are correctly handled by

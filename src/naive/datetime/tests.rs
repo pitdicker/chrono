@@ -246,10 +246,6 @@ fn test_datetime_parse_from_str() {
         NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_nano_opt(h, n, s, nano).unwrap()
     };
     assert_eq!(
-        NaiveDateTime::parse_from_str("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z"),
-        Ok(ymdhms(2014, 5, 7, 12, 34, 56))
-    ); // ignore offset
-    assert_eq!(
         NaiveDateTime::parse_from_str("2015-W06-1 000000", "%G-W%V-%u%H%M%S"),
         Ok(ymdhms(2015, 2, 2, 0, 0, 0))
     );
@@ -283,6 +279,9 @@ fn test_datetime_parse_from_str() {
     assert_eq!(
         NaiveDateTime::parse_from_str("1437742189.918273645", "%s%.9f"),
         Ok(ymdhmsn(2015, 7, 24, 12, 49, 49, 918273645))
+    );
+    assert!(
+        NaiveDateTime::parse_from_str("2014-5-7T12:34:56+09:30", "%Y-%m-%dT%H:%M:%S%z").is_err()
     );
 }
 
