@@ -1555,3 +1555,15 @@ fn test_datetime_fixed_offset() {
     let datetime_fixed = fixed_offset.from_local_datetime(&naivedatetime).unwrap();
     assert_eq!(datetime_fixed.fixed_offset(), datetime_fixed);
 }
+
+#[test]
+fn issue_1112() {
+    let s = "Mon Apr  3 22:32:00 BST 2023";
+    let fmt = "%a %b %e %T %Z %Y";
+    let offset = FixedOffset::east_opt(3600).unwrap();
+
+    let parsed = offset.datetime_from_str(s, fmt).unwrap();
+    let expected = offset.with_ymd_and_hms(2023, 4, 3, 22, 32, 0).unwrap();
+
+    assert_eq!(expected, parsed);
+}
