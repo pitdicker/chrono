@@ -1,13 +1,27 @@
 use super::parse::set_weekday_with_number_from_monday;
 use super::scan;
 use super::{ParseResult, Parsed, INVALID, OUT_OF_RANGE, TOO_SHORT};
-use crate::{Days, NaiveDateTime};
+use crate::{DateTime, Days, FixedOffset, NaiveDateTime};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(crate) enum Iso8601Format {
     Basic,
     Extended,
     Unknown,
+}
+
+/// Returns `(DateTime<FixedOffset>, remainder)`.
+pub(crate) fn parse_iso8601(s: &str) -> ParseResult<(DateTime<FixedOffset>, &str)> {
+    let (dt, s, format) = parse_iso8601_datetime(s)?;
+
+    let (s, offset) = if format == Iso8601Format::Extended {
+        scan::timezone_offset(s, |s| scan::char(s, b':'), true, true, true)?
+    } else {
+        scan::timezone_offset(s, |s| Ok(s), true, true, true)?
+    };
+    let offset = FixedOffset::east_opt(offset).ok_or(OUT_OF_RANGE)?;
+
+    dt.and_local_timezone(offset).single().ok_or(OUT_OF_RANGE).map(|dt| (dt, s))
 }
 
 /// Returns `(NaiveDateTime, remainder, Iso8601Format)`.
@@ -189,7 +203,7 @@ pub(crate) fn parse_iso8601_time<'a>(
 
     hour = try_consume!(scan::number(s, 2, 2));
 
-    if let Some((s_, fraction)) = Fraction::parse(s) {
+    if let Ok((s_, fraction)) = Fraction::parse(s) {
         s = s_;
         // Minute, second and nanosecond are expressed as a fraction of an hour.
         let (sec, nanos) = fraction.mul_with_nanos(3600);
@@ -211,7 +225,7 @@ pub(crate) fn parse_iso8601_time<'a>(
     }
     minute = try_consume!(scan::number(s, 2, 2));
 
-    if let Some((s_, fraction)) = Fraction::parse(s) {
+    if let Ok((s_, fraction)) = Fraction::parse(s) {
         s = s_;
         // Second and nanosecond are expressed as a fraction of a minute.
         let (sec, nanos) = fraction.mul_with_nanos(60);
@@ -239,7 +253,7 @@ pub(crate) fn parse_iso8601_time<'a>(
     }
     second = try_consume!(scan::number(s, 2, 2));
 
-    if let Some((s_, fraction)) = Fraction::parse(s) {
+    if let Ok((s_, fraction)) = Fraction::parse(s) {
         s = s_;
         // Nanosecond are expressed as a fraction of a minute.
         let (sec_from_rounding, nanos) = fraction.mul_with_nanos(1);
