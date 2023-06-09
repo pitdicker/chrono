@@ -45,6 +45,7 @@ mod parsed;
 
 // due to the size of parsing routines, they are in separate modules.
 mod parse;
+pub(crate) mod parse_iso8601;
 pub(crate) mod scan;
 
 pub mod strftime;
