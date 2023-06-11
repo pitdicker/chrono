@@ -549,7 +549,7 @@ where
                     }
 
                     &RFC2822 => try_consume!(parse_rfc2822(parsed, s)),
-                    &RFC3339 => try_consume!(parse_rfc3339(parsed, s)),
+                    &RFC3339 => try_consume!(parse_rfc3339_relaxed(parsed, s)),
                 }
             }
 
