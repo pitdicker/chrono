@@ -259,10 +259,14 @@ fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult
         Err((_s, e)) => return Err(e),
         Ok(_) => return Err(NOT_ENOUGH),
     };
-    if !(s.starts_with('T') || s.starts_with(' ')) {
-        return Err(INVALID);
-    }
-    s = match parse_internal(parsed, &s[1..], TIME_ITEMS.iter()) {
+
+    s = match s.as_bytes().first() {
+        Some(&b't' | &b'T' | &b' ') => &s[1..],
+        Some(_) => return Err(INVALID),
+        None => return Err(TOO_SHORT),
+    };
+
+    s = match parse_internal(parsed, s, TIME_ITEMS.iter()) {
         Err((remainder, e)) if e.0 == ParseErrorKind::TooLong => remainder,
         Err((_s, e)) => return Err(e),
         Ok(_) => return Err(NOT_ENOUGH),
