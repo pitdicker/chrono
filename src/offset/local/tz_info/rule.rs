@@ -7,7 +7,7 @@ use super::{
     SECONDS_PER_DAY,
 };
 use crate::offset::local::{lookup_with_dst_transitions, Transition};
-use crate::{FixedOffset, NaiveDateTime};
+use crate::{Datelike, FixedOffset, NaiveDateTime};
 
 /// Transition rule
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -153,10 +153,9 @@ impl AlternateTime {
         let dst_start_time_in_utc = self.dst_start_time as i64 - self.std.raw_offset() as i64;
         let dst_end_time_in_utc = self.dst_end_time as i64 - self.dst.raw_offset() as i64;
 
-        let current_year = match UtcDateTime::from_timespec(unix_time) {
-            Ok(dt) => dt.year,
-            Err(error) => return Err(error),
-        };
+        let current_year = NaiveDateTime::from_timestamp_opt(unix_time, 0)
+            .ok_or(Error::OutOfRange("out of range operation"))?
+            .year();
 
         // Check if the current year is valid for the following computations
         if !(i32::min_value() + 2 <= current_year && current_year <= i32::max_value() - 2) {
@@ -522,99 +521,6 @@ impl RuleDay {
     fn unix_time(&self, year: i32, day_time_in_utc: i64) -> i64 {
         let (month, month_day) = self.transition_date(year);
         days_since_unix_epoch(year, month, month_day) * SECONDS_PER_DAY + day_time_in_utc
-    }
-}
-
-/// UTC date time exprimed in the [proleptic gregorian calendar](https://en.wikipedia.org/wiki/Proleptic_Gregorian_calendar)
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) struct UtcDateTime {
-    /// Year
-    pub(crate) year: i32,
-    /// Month in `[1, 12]`
-    pub(crate) month: u8,
-    /// Day of the month in `[1, 31]`
-    pub(crate) month_day: u8,
-    /// Hours since midnight in `[0, 23]`
-    pub(crate) hour: u8,
-    /// Minutes in `[0, 59]`
-    pub(crate) minute: u8,
-    /// Seconds in `[0, 60]`, with a possible leap second
-    pub(crate) second: u8,
-}
-
-impl UtcDateTime {
-    /// Construct a UTC date time from a Unix time in seconds and nanoseconds
-    pub(crate) fn from_timespec(unix_time: i64) -> Result<Self, Error> {
-        let seconds = match unix_time.checked_sub(UNIX_OFFSET_SECS) {
-            Some(seconds) => seconds,
-            None => return Err(Error::OutOfRange("out of range operation")),
-        };
-
-        let mut remaining_days = seconds / SECONDS_PER_DAY;
-        let mut remaining_seconds = seconds % SECONDS_PER_DAY;
-        if remaining_seconds < 0 {
-            remaining_seconds += SECONDS_PER_DAY;
-            remaining_days -= 1;
-        }
-
-        let mut cycles_400_years = remaining_days / DAYS_PER_400_YEARS;
-        remaining_days %= DAYS_PER_400_YEARS;
-        if remaining_days < 0 {
-            remaining_days += DAYS_PER_400_YEARS;
-            cycles_400_years -= 1;
-        }
-
-        let cycles_100_years = Ord::min(remaining_days / DAYS_PER_100_YEARS, 3);
-        remaining_days -= cycles_100_years * DAYS_PER_100_YEARS;
-
-        let cycles_4_years = Ord::min(remaining_days / DAYS_PER_4_YEARS, 24);
-        remaining_days -= cycles_4_years * DAYS_PER_4_YEARS;
-
-        let remaining_years = Ord::min(remaining_days / DAYS_PER_NORMAL_YEAR, 3);
-        remaining_days -= remaining_years * DAYS_PER_NORMAL_YEAR;
-
-        let mut year = OFFSET_YEAR
-            + remaining_years
-            + cycles_4_years * 4
-            + cycles_100_years * 100
-            + cycles_400_years * 400;
-
-        let mut month = 0;
-        while month < DAY_IN_MONTHS_LEAP_YEAR_FROM_MARCH.len() {
-            let days = DAY_IN_MONTHS_LEAP_YEAR_FROM_MARCH[month];
-            if remaining_days < days {
-                break;
-            }
-            remaining_days -= days;
-            month += 1;
-        }
-        month += 2;
-
-        if month >= MONTHS_PER_YEAR as usize {
-            month -= MONTHS_PER_YEAR as usize;
-            year += 1;
-        }
-        month += 1;
-
-        let month_day = 1 + remaining_days;
-
-        let hour = remaining_seconds / SECONDS_PER_HOUR;
-        let minute = (remaining_seconds / SECONDS_PER_MINUTE) % MINUTES_PER_HOUR;
-        let second = remaining_seconds % SECONDS_PER_MINUTE;
-
-        let year = match year >= i32::min_value() as i64 && year <= i32::max_value() as i64 {
-            true => year as i32,
-            false => return Err(Error::OutOfRange("i64 is out of range for i32")),
-        };
-
-        Ok(Self {
-            year,
-            month: month as u8,
-            month_day: month_day as u8,
-            hour: hour as u8,
-            minute: minute as u8,
-            second: second as u8,
-        })
     }
 }
 
