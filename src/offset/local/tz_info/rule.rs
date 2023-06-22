@@ -2,12 +2,9 @@ use std::cmp::Ordering;
 
 use super::parser::Cursor;
 use super::timezone::{LocalTimeType, SECONDS_PER_WEEK};
-use super::{
-    Error, CUMUL_DAY_IN_MONTHS_NORMAL_YEAR, DAYS_PER_WEEK, DAY_IN_MONTHS_NORMAL_YEAR,
-    SECONDS_PER_DAY,
-};
+use super::Error;
 use crate::offset::local::{lookup_with_dst_transitions, Transition};
-use crate::{Datelike, FixedOffset, NaiveDateTime};
+use crate::{Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
 
 /// Transition rule
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -239,21 +236,14 @@ impl AlternateTime {
             return Err(Error::OutOfRange("out of range date time"));
         }
 
-        let dst_start_transition = NaiveDateTime::from_timestamp_opt(
-            self.dst_start.unix_time(current_year, i64::from(self.dst_start_time)),
-            0,
-        )
-        .unwrap();
-        let dst_end_transition = NaiveDateTime::from_timestamp_opt(
-            self.dst_end.unix_time(current_year, i64::from(self.dst_end_time)),
-            0,
-        )
-        .unwrap();
+        // FIXME: handle unwraps
+        let dst_start = self.dst_start.datetime(current_year, self.dst_start_time).unwrap();
+        let dst_end = self.dst_end.datetime(current_year, self.dst_end_time).unwrap();
         let local_datetime = NaiveDateTime::from_timestamp_opt(local_time, 0).unwrap();
 
         let mut transitions = [
-            Transition::new(dst_start_transition, self.std.offset(), self.dst.offset()),
-            Transition::new(dst_end_transition, self.dst.offset(), self.std.offset()),
+            Transition::new(dst_start, self.std.offset(), self.dst.offset()),
+            Transition::new(dst_end, self.dst.offset(), self.std.offset()),
         ];
         transitions.sort_unstable();
 
@@ -359,14 +349,22 @@ fn parse_signed_hhmmss(cursor: &mut Cursor) -> Result<(i32, i32, i32, i32), Erro
     Ok((sign, hour, minute, second))
 }
 
-/// Transition rule day
+/// Transition rule day.
+///
+/// A Posix TZ rule has three ways of expressing a yearly recurring date:
+/// - as an ordinal that doesn't take leap days into account ('Julian day').
+/// - as a zero-indexed ordinal that does count leap days ('zero-based Julian day').
+/// - The d'th day (0 <= d <= 6) of week n of month m of the year, where week 5 means the last
+///   d day in month m.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum RuleDay {
-    /// Julian day in `[1, 365]`, without taking occasional Feb 29 into account, which is not referenceable
+    /// Julian day in `[1, 365]`, without taking occasional February 29th into account, which is
+    /// not referenceable.
     Julian1WithoutLeap(u16),
-    /// Zero-based Julian day in `[0, 365]`, taking occasional Feb 29 into account
+    /// Zero-based Julian day in `[0, 365]`, taking occasional February 29th into account and
+    /// allowing December 32nd.
     Julian0WithLeap(u16),
-    /// Day represented by a month, a month week and a week day
+    /// Day represented by a month, a month week and a week day.
     MonthWeekday {
         /// Month in `[1, 12]`
         month: u8,
@@ -400,14 +398,15 @@ impl RuleDay {
         Ok((
             date,
             match (cursor.read_optional_tag(b"/")?, use_string_extensions) {
-                (false, _) => 2 * 3600,
+                (false, _) => 2 * 3600, // fall back to 2:00:00
                 (true, true) => parse_rule_time_extended(cursor)?,
                 (true, false) => parse_rule_time(cursor)?,
             },
         ))
     }
 
-    /// Construct a transition rule day represented by a Julian day in `[1, 365]`, without taking occasional Feb 29 into account, which is not referenceable
+    /// Construct a transition rule day represented by a Julian day in `[1, 365]`, without taking
+    /// occasional February 29th into account, which is not referenceable.
     fn julian_1(julian_day_1: u16) -> Result<Self, Error> {
         if !(1..=365).contains(&julian_day_1) {
             return Err(Error::TransitionRule("invalid rule day julian day"));
@@ -416,7 +415,8 @@ impl RuleDay {
         Ok(RuleDay::Julian1WithoutLeap(julian_day_1))
     }
 
-    /// Construct a transition rule day represented by a zero-based Julian day in `[0, 365]`, taking occasional Feb 29 into account
+    /// Construct a transition rule day represented by a zero-based Julian day in `[0, 365]`,
+    /// taking occasional February 29th into account and allowing December 32nd.
     const fn julian_0(julian_day_0: u16) -> Result<Self, Error> {
         if julian_day_0 > 365 {
             return Err(Error::TransitionRule("invalid rule day julian day"));
@@ -425,7 +425,7 @@ impl RuleDay {
         Ok(RuleDay::Julian0WithLeap(julian_day_0))
     }
 
-    /// Construct a transition rule day represented by a month, a month week and a week day
+    /// Construct a transition rule day represented by a month, a month week and a week day.
     fn month_weekday(month: u8, week: u8, week_day: u8) -> Result<Self, Error> {
         if !(1..=12).contains(&month) {
             return Err(Error::TransitionRule("invalid rule day month"));
@@ -442,154 +442,57 @@ impl RuleDay {
         Ok(RuleDay::MonthWeekday { month, week, week_day })
     }
 
-    /// Get the transition date for the provided year
+    /// Get the transition date for the provided year.
     ///
-    /// ## Outputs
-    ///
-    /// * `month`: Month in `[1, 12]`
-    /// * `month_day`: Day of the month in `[1, 31]`
-    fn transition_date(&self, year: i32) -> (usize, i64) {
+    /// Returns `None` on dates out of range for `NaiveDate`.
+    fn transition_date(&self, year: i32) -> Option<NaiveDate> {
         match *self {
             RuleDay::Julian1WithoutLeap(year_day) => {
-                let year_day = year_day as i64;
-
-                let month = match CUMUL_DAY_IN_MONTHS_NORMAL_YEAR.binary_search(&(year_day - 1)) {
-                    Ok(x) => x + 1,
-                    Err(x) => x,
-                };
-
-                let month_day = year_day - CUMUL_DAY_IN_MONTHS_NORMAL_YEAR[month - 1];
-
-                (month, month_day)
+                NaiveDate::from_yo_opt(year, year_day as u32).and_then(|date| {
+                    if year_day > (31 + 28) && date.with_ordinal(366).is_some() {
+                        date.succ_opt() // Leap year: skip leap day.
+                    } else {
+                        Some(date)
+                    }
+                })
             }
             RuleDay::Julian0WithLeap(year_day) => {
-                let leap = is_leap_year(year) as i64;
-
-                let cumul_day_in_months = [
-                    0,
-                    31,
-                    59 + leap,
-                    90 + leap,
-                    120 + leap,
-                    151 + leap,
-                    181 + leap,
-                    212 + leap,
-                    243 + leap,
-                    273 + leap,
-                    304 + leap,
-                    334 + leap,
-                ];
-
-                let year_day = year_day as i64;
-
-                let month = match cumul_day_in_months.binary_search(&year_day) {
-                    Ok(x) => x + 1,
-                    Err(x) => x,
-                };
-
-                let month_day = 1 + year_day - cumul_day_in_months[month - 1];
-
-                (month, month_day)
+                match NaiveDate::from_yo_opt(year, year_day as u32 + 1) {
+                    Some(date) => Some(date),
+                    None => {
+                        // A `year_day` of `365` in a non-leap year corresponds to December 32th.
+                        // Wrap to Januari 1st the next year.
+                        NaiveDate::from_yo_opt(year + 1, 1)
+                    }
+                }
             }
-            RuleDay::MonthWeekday { month: rule_month, week, week_day } => {
-                let leap = is_leap_year(year) as i64;
-
-                let month = rule_month as usize;
-
-                let mut day_in_month = DAY_IN_MONTHS_NORMAL_YEAR[month - 1];
-                if month == 2 {
-                    day_in_month += leap;
+            RuleDay::MonthWeekday { month, week, week_day } => {
+                let from_weekday = NaiveDate::from_weekday_of_month_opt;
+                let day_of_week = Weekday::try_from(week_day).unwrap().pred();
+                if let Some(date) = from_weekday(year, month as u32, day_of_week, week) {
+                    Some(date)
+                } else {
+                    from_weekday(year, month as u32, day_of_week, 4)
                 }
-
-                let week_day_of_first_month_day =
-                    (4 + days_since_unix_epoch(year, month, 1)).rem_euclid(DAYS_PER_WEEK);
-                let first_week_day_occurence_in_month =
-                    1 + (week_day as i64 - week_day_of_first_month_day).rem_euclid(DAYS_PER_WEEK);
-
-                let mut month_day =
-                    first_week_day_occurence_in_month + (week as i64 - 1) * DAYS_PER_WEEK;
-                if month_day > day_in_month {
-                    month_day -= DAYS_PER_WEEK
-                }
-
-                (month, month_day)
             }
         }
+    }
+
+    /// Returns the transition date and time for the provided year.
+    /// `time_offset` can be more than 24 hours.
+    ///
+    /// Returns `None` on dates out of range for `NaiveDateTime`.
+    fn datetime(&self, year: i32, time_offset: i32) -> Option<NaiveDateTime> {
+        self.transition_date(year)?
+            .and_time(NaiveTime::MIN)
+            .checked_add_signed(Duration::seconds(time_offset as i64))
     }
 
     /// Returns the UTC Unix time in seconds associated to the transition date for the provided year
     fn unix_time(&self, year: i32, day_time_in_utc: i64) -> i64 {
-        let (month, month_day) = self.transition_date(year);
-        days_since_unix_epoch(year, month, month_day) * SECONDS_PER_DAY + day_time_in_utc
+        let date = self.transition_date(year);
+        date.unwrap().and_time(NaiveTime::MIN).timestamp() + day_time_in_utc
     }
-}
-
-/// Number of nanoseconds in one second
-const NANOSECONDS_PER_SECOND: u32 = 1_000_000_000;
-/// Number of seconds in one minute
-const SECONDS_PER_MINUTE: i64 = 60;
-/// Number of seconds in one hour
-const SECONDS_PER_HOUR: i64 = 3600;
-/// Number of minutes in one hour
-const MINUTES_PER_HOUR: i64 = 60;
-/// Number of months in one year
-const MONTHS_PER_YEAR: i64 = 12;
-/// Number of days in a normal year
-const DAYS_PER_NORMAL_YEAR: i64 = 365;
-/// Number of days in 4 years (including 1 leap year)
-const DAYS_PER_4_YEARS: i64 = DAYS_PER_NORMAL_YEAR * 4 + 1;
-/// Number of days in 100 years (including 24 leap years)
-const DAYS_PER_100_YEARS: i64 = DAYS_PER_NORMAL_YEAR * 100 + 24;
-/// Number of days in 400 years (including 97 leap years)
-const DAYS_PER_400_YEARS: i64 = DAYS_PER_NORMAL_YEAR * 400 + 97;
-/// Unix time at `2000-03-01T00:00:00Z` (Wednesday)
-const UNIX_OFFSET_SECS: i64 = 951868800;
-/// Offset year
-const OFFSET_YEAR: i64 = 2000;
-/// Month days in a leap year from March
-const DAY_IN_MONTHS_LEAP_YEAR_FROM_MARCH: [i64; 12] =
-    [31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 31, 29];
-
-/// Compute the number of days since Unix epoch (`1970-01-01T00:00:00Z`).
-///
-/// ## Inputs
-///
-/// * `year`: Year
-/// * `month`: Month in `[1, 12]`
-/// * `month_day`: Day of the month in `[1, 31]`
-pub(crate) const fn days_since_unix_epoch(year: i32, month: usize, month_day: i64) -> i64 {
-    let is_leap_year = is_leap_year(year);
-
-    let year = year as i64;
-
-    let mut result = (year - 1970) * 365;
-
-    if year >= 1970 {
-        result += (year - 1968) / 4;
-        result -= (year - 1900) / 100;
-        result += (year - 1600) / 400;
-
-        if is_leap_year && month < 3 {
-            result -= 1;
-        }
-    } else {
-        result += (year - 1972) / 4;
-        result -= (year - 2000) / 100;
-        result += (year - 2000) / 400;
-
-        if is_leap_year && month >= 3 {
-            result += 1;
-        }
-    }
-
-    result += CUMUL_DAY_IN_MONTHS_NORMAL_YEAR[month - 1] + month_day - 1;
-
-    result
-}
-
-/// Check if a year is a leap year
-pub(crate) const fn is_leap_year(year: i32) -> bool {
-    year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)
 }
 
 #[cfg(test)]
@@ -597,6 +500,7 @@ mod tests {
     use super::super::timezone::Transition;
     use super::super::{Error, TimeZone};
     use super::{AlternateTime, LocalTimeType, RuleDay, TransitionRule};
+    use crate::NaiveDate;
 
     #[test]
     fn test_quoted() -> Result<(), Error> {
@@ -722,18 +626,18 @@ mod tests {
     #[test]
     fn test_rule_day() -> Result<(), Error> {
         let rule_day_j1 = RuleDay::julian_1(60)?;
-        assert_eq!(rule_day_j1.transition_date(2000), (3, 1));
-        assert_eq!(rule_day_j1.transition_date(2001), (3, 1));
+        assert_eq!(rule_day_j1.transition_date(2000), NaiveDate::from_ymd_opt(2000, 3, 1));
+        assert_eq!(rule_day_j1.transition_date(2001), NaiveDate::from_ymd_opt(2001, 3, 1));
         assert_eq!(rule_day_j1.unix_time(2000, 43200), 951912000);
 
         let rule_day_j0 = RuleDay::julian_0(59)?;
-        assert_eq!(rule_day_j0.transition_date(2000), (2, 29));
-        assert_eq!(rule_day_j0.transition_date(2001), (3, 1));
+        assert_eq!(rule_day_j0.transition_date(2000), NaiveDate::from_ymd_opt(2000, 2, 29));
+        assert_eq!(rule_day_j0.transition_date(2001), NaiveDate::from_ymd_opt(2001, 3, 1));
         assert_eq!(rule_day_j0.unix_time(2000, 43200), 951825600);
 
         let rule_day_mwd = RuleDay::month_weekday(2, 5, 2)?;
-        assert_eq!(rule_day_mwd.transition_date(2000), (2, 29));
-        assert_eq!(rule_day_mwd.transition_date(2001), (2, 27));
+        assert_eq!(rule_day_mwd.transition_date(2000), NaiveDate::from_ymd_opt(2000, 2, 29));
+        assert_eq!(rule_day_mwd.transition_date(2001), NaiveDate::from_ymd_opt(2001, 2, 27));
         assert_eq!(rule_day_mwd.unix_time(2000, 43200), 951825600);
         assert_eq!(rule_day_mwd.unix_time(2001, 43200), 983275200);
 
