@@ -106,5 +106,3 @@ const HOURS_PER_DAY: i64 = 24;
 const SECONDS_PER_HOUR: i64 = 3600;
 /// Number of seconds in one day
 const SECONDS_PER_DAY: i64 = SECONDS_PER_HOUR * HOURS_PER_DAY;
-/// Number of days in one week
-const DAYS_PER_WEEK: i64 = 7;

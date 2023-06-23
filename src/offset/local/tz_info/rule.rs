@@ -1,5 +1,5 @@
 use super::parser::Cursor;
-use super::timezone::{LocalTimeType, SECONDS_PER_WEEK};
+use super::timezone::LocalTimeType;
 use super::Error;
 use crate::offset::local::{lookup_with_dst_transitions, Transition};
 use crate::{Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
@@ -132,13 +132,6 @@ impl AlternateTime {
         dst_end: RuleDay,
         dst_end_time: i32,
     ) -> Result<Self, Error> {
-        // Overflow is not possible
-        if !((dst_start_time as i64).abs() < SECONDS_PER_WEEK
-            && (dst_end_time as i64).abs() < SECONDS_PER_WEEK)
-        {
-            return Err(Error::TransitionRule("invalid DST start or end time"));
-        }
-
         Ok(Self { std, dst, dst_start, dst_start_time, dst_end, dst_end_time })
     }
 

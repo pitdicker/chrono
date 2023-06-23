@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::{cmp::Ordering, fmt, str};
 
 use super::rule::{AlternateTime, TransitionRule};
-use super::{parser, Error, DAYS_PER_WEEK, SECONDS_PER_DAY};
+use super::{parser, Error, SECONDS_PER_DAY};
 use crate::{expect, FixedOffset};
 
 /// Time zone
@@ -657,8 +657,6 @@ fn find_tz_file(path: impl AsRef<Path>) -> Result<File, Error> {
 const ZONE_INFO_DIRECTORIES: [&str; 4] =
     ["/usr/share/zoneinfo", "/share/zoneinfo", "/etc/zoneinfo", "/usr/share/lib/zoneinfo"];
 
-/// Number of seconds in one week
-pub(crate) const SECONDS_PER_WEEK: i64 = SECONDS_PER_DAY * DAYS_PER_WEEK;
 /// Number of seconds in 28 days
 const SECONDS_PER_28_DAYS: i64 = SECONDS_PER_DAY * 28;
 
