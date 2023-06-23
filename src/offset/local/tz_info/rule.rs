@@ -46,10 +46,10 @@ impl TransitionRule {
         }
 
         cursor.read_tag(b",")?;
-        let (dst_start, dst_start_time) = RuleDay::parse(&mut cursor, use_string_extensions)?;
+        let dst_start = RuleDayTime::parse(&mut cursor, use_string_extensions)?;
 
         cursor.read_tag(b",")?;
-        let (dst_end, dst_end_time) = RuleDay::parse(&mut cursor, use_string_extensions)?;
+        let dst_end = RuleDayTime::parse(&mut cursor, use_string_extensions)?;
 
         if !cursor.is_empty() {
             return Err(Error::InvalidTzString("remaining data after parsing TZ string"));
@@ -59,9 +59,7 @@ impl TransitionRule {
             LocalTimeType::new(-std_offset, false, std_time_zone)?,
             LocalTimeType::new(-dst_offset, true, dst_time_zone)?,
             dst_start,
-            dst_start_time,
             dst_end,
-            dst_end_time,
         )?
         .into())
     }
@@ -112,14 +110,10 @@ pub(super) struct AlternateTime {
     pub(super) std: LocalTimeType,
     /// Local time type for Daylight Saving Time
     pub(super) dst: LocalTimeType,
-    /// Start day of Daylight Saving Time
-    dst_start: RuleDay,
-    /// Local start day time of Daylight Saving Time, in seconds
-    dst_start_time: i32,
-    /// End day of Daylight Saving Time
-    dst_end: RuleDay,
-    /// Local end day time of Daylight Saving Time, in seconds
-    dst_end_time: i32,
+    /// Start of Daylight Saving Time
+    dst_start: RuleDayTime,
+    /// End of Daylight Saving Time
+    dst_end: RuleDayTime,
 }
 
 impl AlternateTime {
@@ -127,20 +121,14 @@ impl AlternateTime {
     const fn new(
         std: LocalTimeType,
         dst: LocalTimeType,
-        dst_start: RuleDay,
-        dst_start_time: i32,
-        dst_end: RuleDay,
-        dst_end_time: i32,
+        dst_start: RuleDayTime,
+        dst_end: RuleDayTime,
     ) -> Result<Self, Error> {
-        Ok(Self { std, dst, dst_start, dst_start_time, dst_end, dst_end_time })
+        Ok(Self { std, dst, dst_start, dst_end })
     }
 
     /// Find the local time type associated to the alternate transition rule at the specified Unix time in seconds
     fn find_local_time_type(&self, unix_time: i64) -> Result<&LocalTimeType, Error> {
-        // Overflow is not possible
-        let dst_start_time_in_utc = self.dst_start_time as i64 - self.std.raw_offset() as i64;
-        let dst_end_time_in_utc = self.dst_end_time as i64 - self.dst.raw_offset() as i64;
-
         let current_year = NaiveDateTime::from_timestamp_opt(unix_time, 0)
             .ok_or(Error::OutOfRange("out of range operation"))?
             .year();
@@ -151,18 +139,18 @@ impl AlternateTime {
         }
 
         let current_year_dst_start_unix_time =
-            self.dst_start.unix_time(current_year, dst_start_time_in_utc);
+            self.dst_start.unix_time(current_year, self.std.offset());
         let current_year_dst_end_unix_time =
-            self.dst_end.unix_time(current_year, dst_end_time_in_utc);
+            self.dst_end.unix_time(current_year, self.dst.offset());
 
         // Check DST start/end Unix times for previous/current/next years to support for transition day times outside of [0h, 24h] range
         let is_dst = if current_year_dst_start_unix_time <= current_year_dst_end_unix_time {
             if unix_time < current_year_dst_start_unix_time {
                 let previous_year_dst_end_unix_time =
-                    self.dst_end.unix_time(current_year - 1, dst_end_time_in_utc);
+                    self.dst_end.unix_time(current_year - 1, self.dst.offset());
                 if unix_time < previous_year_dst_end_unix_time {
                     let previous_year_dst_start_unix_time =
-                        self.dst_start.unix_time(current_year - 1, dst_start_time_in_utc);
+                        self.dst_start.unix_time(current_year - 1, self.std.offset());
                     previous_year_dst_start_unix_time <= unix_time
                 } else {
                     false
@@ -171,10 +159,10 @@ impl AlternateTime {
                 true
             } else {
                 let next_year_dst_start_unix_time =
-                    self.dst_start.unix_time(current_year + 1, dst_start_time_in_utc);
+                    self.dst_start.unix_time(current_year + 1, self.std.offset());
                 if next_year_dst_start_unix_time <= unix_time {
                     let next_year_dst_end_unix_time =
-                        self.dst_end.unix_time(current_year + 1, dst_end_time_in_utc);
+                        self.dst_end.unix_time(current_year + 1, self.dst.offset());
                     unix_time < next_year_dst_end_unix_time
                 } else {
                     false
@@ -183,10 +171,10 @@ impl AlternateTime {
         } else {
             if unix_time < current_year_dst_end_unix_time {
                 let previous_year_dst_start_unix_time =
-                    self.dst_start.unix_time(current_year - 1, dst_start_time_in_utc);
+                    self.dst_start.unix_time(current_year - 1, self.std.offset());
                 if unix_time < previous_year_dst_start_unix_time {
                     let previous_year_dst_end_unix_time =
-                        self.dst_end.unix_time(current_year - 1, dst_end_time_in_utc);
+                        self.dst_end.unix_time(current_year - 1, self.dst.offset());
                     unix_time < previous_year_dst_end_unix_time
                 } else {
                     true
@@ -195,10 +183,10 @@ impl AlternateTime {
                 false
             } else {
                 let next_year_dst_end_unix_time =
-                    self.dst_end.unix_time(current_year + 1, dst_end_time_in_utc);
+                    self.dst_end.unix_time(current_year + 1, self.dst.offset());
                 if next_year_dst_end_unix_time <= unix_time {
                     let next_year_dst_start_unix_time =
-                        self.dst_start.unix_time(current_year + 1, dst_start_time_in_utc);
+                        self.dst_start.unix_time(current_year + 1, self.std.offset());
                     next_year_dst_start_unix_time <= unix_time
                 } else {
                     true
@@ -218,14 +206,9 @@ impl AlternateTime {
         local_time: i64,
         current_year: i32,
     ) -> Result<crate::LocalResult<FixedOffset>, Error> {
-        // Check if the current year is valid for the following computations
-        if !(i32::min_value() + 2 <= current_year && current_year <= i32::max_value() - 2) {
-            return Err(Error::OutOfRange("out of range date time"));
-        }
-
         // FIXME: handle unwraps
-        let dst_start = self.dst_start.datetime(current_year, self.dst_start_time).unwrap();
-        let dst_end = self.dst_end.datetime(current_year, self.dst_end_time).unwrap();
+        let dst_start = self.dst_start.datetime(current_year).unwrap();
+        let dst_end = self.dst_end.datetime(current_year).unwrap();
         let local_datetime = NaiveDateTime::from_timestamp_opt(local_time, 0).unwrap();
 
         let mut transitions = [
@@ -336,7 +319,7 @@ fn parse_signed_hhmmss(cursor: &mut Cursor) -> Result<(i32, i32, i32, i32), Erro
     Ok((sign, hour, minute, second))
 }
 
-/// Transition rule day.
+/// POSIX transition rule date.
 ///
 /// A Posix TZ rule has three ways of expressing a yearly recurring date:
 /// - as an ordinal that doesn't take leap days into account ('Julian day').
@@ -363,35 +346,6 @@ enum RuleDay {
 }
 
 impl RuleDay {
-    /// Parse transition rule
-    fn parse(cursor: &mut Cursor, use_string_extensions: bool) -> Result<(Self, i32), Error> {
-        let date = match cursor.peek() {
-            Some(b'M') => {
-                cursor.read_exact(1)?;
-                let month = cursor.read_int()?;
-                cursor.read_tag(b".")?;
-                let week = cursor.read_int()?;
-                cursor.read_tag(b".")?;
-                let week_day = cursor.read_int()?;
-                RuleDay::month_weekday(month, week, week_day)?
-            }
-            Some(b'J') => {
-                cursor.read_exact(1)?;
-                RuleDay::julian_1(cursor.read_int()?)?
-            }
-            _ => RuleDay::julian_0(cursor.read_int()?)?,
-        };
-
-        Ok((
-            date,
-            match (cursor.read_optional_tag(b"/")?, use_string_extensions) {
-                (false, _) => 2 * 3600, // fall back to 2:00:00
-                (true, true) => parse_rule_time_extended(cursor)?,
-                (true, false) => parse_rule_time(cursor)?,
-            },
-        ))
-    }
-
     /// Construct a transition rule day represented by a Julian day in `[1, 365]`, without taking
     /// occasional February 29th into account, which is not referenceable.
     fn julian_1(julian_day_1: u16) -> Result<Self, Error> {
@@ -464,21 +418,66 @@ impl RuleDay {
             }
         }
     }
+}
+
+/// POSIX transition rule date and time.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+struct RuleDayTime {
+    date: RuleDay,
+    /// Time since midnight local time.
+    /// When used as TZ string in a version 3 TZif file the valid values are
+    /// `-167*60*60 < time_offset < 167*60*60`
+    /// I.e. up to a week before or after the date.
+    time_offset: i32,
+}
+
+impl RuleDayTime {
+    fn new(date: RuleDay, time_offset: i32) -> Self {
+        RuleDayTime { date, time_offset }
+    }
+
+    /// Parse transition rule
+    fn parse(cursor: &mut Cursor, use_string_extensions: bool) -> Result<Self, Error> {
+        let date = match cursor.peek() {
+            Some(b'M') => {
+                cursor.read_exact(1)?;
+                let month = cursor.read_int()?;
+                cursor.read_tag(b".")?;
+                let week = cursor.read_int()?;
+                cursor.read_tag(b".")?;
+                let week_day = cursor.read_int()?;
+                RuleDay::month_weekday(month, week, week_day)?
+            }
+            Some(b'J') => {
+                cursor.read_exact(1)?;
+                RuleDay::julian_1(cursor.read_int()?)?
+            }
+            _ => RuleDay::julian_0(cursor.read_int()?)?,
+        };
+
+        let time_offset = match (cursor.read_optional_tag(b"/")?, use_string_extensions) {
+            (false, _) => 2 * 3600, // fall back to 2:00:00
+            (true, true) => parse_rule_time_extended(cursor)?,
+            (true, false) => parse_rule_time(cursor)?,
+        };
+
+        Ok(RuleDayTime { date, time_offset })
+    }
 
     /// Returns the transition date and time for the provided year.
     /// `time_offset` can be more than 24 hours.
     ///
     /// Returns `None` on dates out of range for `NaiveDateTime`.
-    fn datetime(&self, year: i32, time_offset: i32) -> Option<NaiveDateTime> {
-        self.transition_date(year)?
+    fn datetime(&self, year: i32) -> Option<NaiveDateTime> {
+        self.date
+            .transition_date(year)?
             .and_time(NaiveTime::MIN)
-            .checked_add_signed(Duration::seconds(time_offset as i64))
+            .checked_add_signed(Duration::seconds(self.time_offset as i64))
     }
 
     /// Returns the UTC Unix time in seconds associated to the transition date for the provided year
-    fn unix_time(&self, year: i32, day_time_in_utc: i64) -> i64 {
-        let date = self.transition_date(year);
-        date.unwrap().and_time(NaiveTime::MIN).timestamp() + day_time_in_utc
+    fn unix_time(&self, year: i32, utc_offset: FixedOffset) -> i64 {
+        (self.datetime(year).unwrap() - utc_offset).timestamp() // FIXME: can overflow
     }
 }
 
@@ -486,7 +485,7 @@ impl RuleDay {
 mod tests {
     use super::super::timezone::Transition;
     use super::super::{Error, TimeZone};
-    use super::{AlternateTime, LocalTimeType, RuleDay, TransitionRule};
+    use super::{AlternateTime, LocalTimeType, RuleDay, RuleDayTime, TransitionRule};
     use crate::NaiveDate;
 
     #[test]
@@ -497,10 +496,8 @@ mod tests {
             AlternateTime::new(
                 LocalTimeType::new(-10800, false, Some(b"-03"))?,
                 LocalTimeType::new(10800, true, Some(b"+03"))?,
-                RuleDay::julian_1(1)?,
-                7200,
-                RuleDay::julian_1(365)?,
-                7200,
+                RuleDayTime::new(RuleDay::julian_1(1)?, 7200),
+                RuleDayTime::new(RuleDay::julian_1(365)?, 7200),
             )?
             .into()
         );
@@ -516,10 +513,8 @@ mod tests {
             AlternateTime::new(
                 LocalTimeType::new(43200, false, Some(b"NZST"))?,
                 LocalTimeType::new(46800, true, Some(b"NZDT"))?,
-                RuleDay::month_weekday(10, 1, 0)?,
-                7200,
-                RuleDay::month_weekday(3, 3, 0)?,
-                7200,
+                RuleDayTime::new(RuleDay::month_weekday(10, 1, 0)?, 7200),
+                RuleDayTime::new(RuleDay::month_weekday(3, 3, 0)?, 7200),
             )?
             .into()
         );
@@ -535,10 +530,8 @@ mod tests {
             AlternateTime::new(
                 LocalTimeType::new(3600, false, Some(b"IST"))?,
                 LocalTimeType::new(0, true, Some(b"GMT"))?,
-                RuleDay::month_weekday(10, 5, 0)?,
-                7200,
-                RuleDay::month_weekday(3, 5, 0)?,
-                3600,
+                RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, 7200),
+                RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, 3600),
             )?
             .into()
         );
@@ -555,10 +548,8 @@ mod tests {
             AlternateTime::new(
                 LocalTimeType::new(-10800, false, Some(b"-03"))?,
                 LocalTimeType::new(-7200, true, Some(b"-02"))?,
-                RuleDay::month_weekday(3, 5, 0)?,
-                -7200,
-                RuleDay::month_weekday(10, 5, 0)?,
-                -3600,
+                RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, -7200),
+                RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, -3600),
             )?
             .into()
         );
@@ -575,10 +566,8 @@ mod tests {
             AlternateTime::new(
                 LocalTimeType::new(-18000, false, Some(b"EST"))?,
                 LocalTimeType::new(-14400, true, Some(b"EDT"))?,
-                RuleDay::julian_0(0)?,
-                0,
-                RuleDay::julian_1(365)?,
-                90000,
+                RuleDayTime::new(RuleDay::julian_0(0)?, 0),
+                RuleDayTime::new(RuleDay::julian_1(365)?, 90000),
             )?
             .into()
         );
@@ -598,10 +587,8 @@ mod tests {
             Some(TransitionRule::from(AlternateTime::new(
                 LocalTimeType::new(7200, false, Some(b"IST"))?,
                 LocalTimeType::new(10800, true, Some(b"IDT"))?,
-                RuleDay::month_weekday(3, 4, 4)?,
-                93600,
-                RuleDay::month_weekday(10, 5, 0)?,
-                7200,
+                RuleDayTime::new(RuleDay::month_weekday(3, 4, 4)?, 93600),
+                RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, 7200),
             )?)),
         )?;
 
@@ -615,18 +602,30 @@ mod tests {
         let rule_day_j1 = RuleDay::julian_1(60)?;
         assert_eq!(rule_day_j1.transition_date(2000), NaiveDate::from_ymd_opt(2000, 3, 1));
         assert_eq!(rule_day_j1.transition_date(2001), NaiveDate::from_ymd_opt(2001, 3, 1));
-        assert_eq!(rule_day_j1.unix_time(2000, 43200), 951912000);
+        assert_eq!(
+            RuleDayTime::new(rule_day_j1, 43200).datetime(2000),
+            NaiveDate::from_ymd_opt(2000, 3, 1).unwrap().and_hms_opt(12, 0, 0)
+        );
 
         let rule_day_j0 = RuleDay::julian_0(59)?;
         assert_eq!(rule_day_j0.transition_date(2000), NaiveDate::from_ymd_opt(2000, 2, 29));
         assert_eq!(rule_day_j0.transition_date(2001), NaiveDate::from_ymd_opt(2001, 3, 1));
-        assert_eq!(rule_day_j0.unix_time(2000, 43200), 951825600);
+        assert_eq!(
+            RuleDayTime::new(rule_day_j0, 43200).datetime(2000),
+            NaiveDate::from_ymd_opt(2000, 2, 29).unwrap().and_hms_opt(12, 0, 0)
+        );
 
         let rule_day_mwd = RuleDay::month_weekday(2, 5, 2)?;
         assert_eq!(rule_day_mwd.transition_date(2000), NaiveDate::from_ymd_opt(2000, 2, 29));
         assert_eq!(rule_day_mwd.transition_date(2001), NaiveDate::from_ymd_opt(2001, 2, 27));
-        assert_eq!(rule_day_mwd.unix_time(2000, 43200), 951825600);
-        assert_eq!(rule_day_mwd.unix_time(2001, 43200), 983275200);
+        assert_eq!(
+            RuleDayTime::new(rule_day_mwd, 43200).datetime(2000),
+            NaiveDate::from_ymd_opt(2000, 2, 29).unwrap().and_hms_opt(12, 0, 0)
+        );
+        assert_eq!(
+            RuleDayTime::new(rule_day_mwd, 43200).datetime(2001),
+            NaiveDate::from_ymd_opt(2001, 2, 27).unwrap().and_hms_opt(12, 0, 0)
+        );
 
         Ok(())
     }
@@ -639,10 +638,8 @@ mod tests {
         let transition_rule_dst = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(43200, false, Some(b"NZST"))?,
             LocalTimeType::new(46800, true, Some(b"NZDT"))?,
-            RuleDay::month_weekday(10, 1, 0)?,
-            7200,
-            RuleDay::month_weekday(3, 3, 0)?,
-            7200,
+            RuleDayTime::new(RuleDay::month_weekday(10, 1, 0)?, 7200),
+            RuleDayTime::new(RuleDay::month_weekday(3, 3, 0)?, 7200),
         )?);
 
         assert_eq!(transition_rule_dst.find_local_time_type(953384399)?.raw_offset(), 46800);
@@ -653,10 +650,8 @@ mod tests {
         let transition_rule_negative_dst = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(3600, false, Some(b"IST"))?,
             LocalTimeType::new(0, true, Some(b"GMT"))?,
-            RuleDay::month_weekday(10, 5, 0)?,
-            7200,
-            RuleDay::month_weekday(3, 5, 0)?,
-            3600,
+            RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, 7200),
+            RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, 3600),
         )?);
 
         assert_eq!(transition_rule_negative_dst.find_local_time_type(954032399)?.raw_offset(), 0);
@@ -673,10 +668,8 @@ mod tests {
         let transition_rule_negative_time_1 = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(0, false, None)?,
             LocalTimeType::new(0, true, None)?,
-            RuleDay::julian_0(100)?,
-            0,
-            RuleDay::julian_0(101)?,
-            -86500,
+            RuleDayTime::new(RuleDay::julian_0(100)?, 0),
+            RuleDayTime::new(RuleDay::julian_0(101)?, -86500),
         )?);
 
         assert!(transition_rule_negative_time_1.find_local_time_type(8639899)?.is_dst());
@@ -687,10 +680,8 @@ mod tests {
         let transition_rule_negative_time_2 = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(-10800, false, Some(b"-03"))?,
             LocalTimeType::new(-7200, true, Some(b"-02"))?,
-            RuleDay::month_weekday(3, 5, 0)?,
-            -7200,
-            RuleDay::month_weekday(10, 5, 0)?,
-            -3600,
+            RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, -7200),
+            RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, -3600),
         )?);
 
         assert_eq!(
@@ -713,10 +704,8 @@ mod tests {
         let transition_rule_all_year_dst = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(-18000, false, Some(b"EST"))?,
             LocalTimeType::new(-14400, true, Some(b"EDT"))?,
-            RuleDay::julian_0(0)?,
-            0,
-            RuleDay::julian_1(365)?,
-            90000,
+            RuleDayTime::new(RuleDay::julian_0(0)?, 0),
+            RuleDayTime::new(RuleDay::julian_1(365)?, 90000),
         )?);
 
         assert_eq!(
@@ -736,19 +725,15 @@ mod tests {
         let transition_rule_1 = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(-1, false, None)?,
             LocalTimeType::new(-1, true, None)?,
-            RuleDay::julian_1(365)?,
-            0,
-            RuleDay::julian_1(1)?,
-            0,
+            RuleDayTime::new(RuleDay::julian_1(365)?, 0),
+            RuleDayTime::new(RuleDay::julian_1(1)?, 0),
         )?);
 
         let transition_rule_2 = TransitionRule::from(AlternateTime::new(
             LocalTimeType::new(1, false, None)?,
             LocalTimeType::new(1, true, None)?,
-            RuleDay::julian_1(365)?,
-            0,
-            RuleDay::julian_1(1)?,
-            0,
+            RuleDayTime::new(RuleDay::julian_1(365)?, 0),
+            RuleDayTime::new(RuleDay::julian_1(1)?, 0),
         )?);
 
         let min_unix_time = -67768100567971200;
