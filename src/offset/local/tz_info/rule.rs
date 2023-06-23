@@ -28,7 +28,11 @@ impl TransitionRule {
         let std_offset = parse_offset(&mut cursor)?;
 
         if cursor.is_empty() {
-            return Ok(LocalTimeType::new(-std_offset, false, std_time_zone)?.into());
+            return Ok(TransitionRule::Fixed(LocalTimeType::new(
+                -std_offset,
+                false,
+                std_time_zone,
+            )?));
         }
 
         let dst_time_zone = Some(parse_name(&mut cursor)?);
@@ -55,13 +59,12 @@ impl TransitionRule {
             return Err(Error::InvalidTzString("remaining data after parsing TZ string"));
         }
 
-        Ok(AlternateTime::new(
+        Ok(TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(-std_offset, false, std_time_zone)?,
             LocalTimeType::new(-dst_offset, true, dst_time_zone)?,
             dst_start,
             dst_end,
-        )?
-        .into())
+        )?))
     }
 
     /// Find the local time type associated to the transition rule at the specified Unix time in seconds
@@ -88,18 +91,6 @@ impl TransitionRule {
                 alternate_time.find_local_offset_from_local(local_time, year)
             }
         }
-    }
-}
-
-impl From<LocalTimeType> for TransitionRule {
-    fn from(inner: LocalTimeType) -> Self {
-        TransitionRule::Fixed(inner)
-    }
-}
-
-impl From<AlternateTime> for TransitionRule {
-    fn from(inner: AlternateTime) -> Self {
-        TransitionRule::Alternate(inner)
     }
 }
 
@@ -493,13 +484,12 @@ mod tests {
         let transition_rule = TransitionRule::from_tz_string(b"<-03>+3<+03>-3,J1,J365", false)?;
         assert_eq!(
             transition_rule,
-            AlternateTime::new(
+            TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(-10800, false, Some(b"-03"))?,
                 LocalTimeType::new(10800, true, Some(b"+03"))?,
                 RuleDayTime::new(RuleDay::julian_1(1)?, 7200),
                 RuleDayTime::new(RuleDay::julian_1(365)?, 7200),
-            )?
-            .into()
+            )?)
         );
         Ok(())
     }
@@ -510,13 +500,12 @@ mod tests {
         let transition_rule = TransitionRule::from_tz_string(tz_string, false)?;
         assert_eq!(
             transition_rule,
-            AlternateTime::new(
+            TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(43200, false, Some(b"NZST"))?,
                 LocalTimeType::new(46800, true, Some(b"NZDT"))?,
                 RuleDayTime::new(RuleDay::month_weekday(10, 1, 0)?, 7200),
                 RuleDayTime::new(RuleDay::month_weekday(3, 3, 0)?, 7200),
-            )?
-            .into()
+            )?)
         );
         Ok(())
     }
@@ -527,13 +516,12 @@ mod tests {
         let transition_rule = TransitionRule::from_tz_string(tz_string, false)?;
         assert_eq!(
             transition_rule,
-            AlternateTime::new(
+            TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(3600, false, Some(b"IST"))?,
                 LocalTimeType::new(0, true, Some(b"GMT"))?,
                 RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, 7200),
                 RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, 3600),
-            )?
-            .into()
+            )?)
         );
         Ok(())
     }
@@ -545,13 +533,12 @@ mod tests {
 
         assert_eq!(
             TransitionRule::from_tz_string(tz_string, true)?,
-            AlternateTime::new(
+            TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(-10800, false, Some(b"-03"))?,
                 LocalTimeType::new(-7200, true, Some(b"-02"))?,
                 RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, -7200),
                 RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, -3600),
-            )?
-            .into()
+            )?)
         );
         Ok(())
     }
@@ -563,13 +550,12 @@ mod tests {
 
         assert_eq!(
             TransitionRule::from_tz_string(tz_string, true)?,
-            AlternateTime::new(
+            TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(-18000, false, Some(b"EST"))?,
                 LocalTimeType::new(-14400, true, Some(b"EDT"))?,
                 RuleDayTime::new(RuleDay::julian_0(0)?, 0),
                 RuleDayTime::new(RuleDay::julian_1(365)?, 90000),
-            )?
-            .into()
+            )?)
         );
         Ok(())
     }
@@ -584,7 +570,7 @@ mod tests {
             vec![Transition::new(2145916800, 0)],
             vec![LocalTimeType::new(7200, false, Some(b"IST"))?],
             Vec::new(),
-            Some(TransitionRule::from(AlternateTime::new(
+            Some(TransitionRule::Alternate(AlternateTime::new(
                 LocalTimeType::new(7200, false, Some(b"IST"))?,
                 LocalTimeType::new(10800, true, Some(b"IDT"))?,
                 RuleDayTime::new(RuleDay::month_weekday(3, 4, 4)?, 93600),
@@ -632,10 +618,10 @@ mod tests {
 
     #[test]
     fn test_transition_rule() -> Result<(), Error> {
-        let transition_rule_fixed = TransitionRule::from(LocalTimeType::new(-36000, false, None)?);
+        let transition_rule_fixed = TransitionRule::Fixed(LocalTimeType::new(-36000, false, None)?);
         assert_eq!(transition_rule_fixed.find_local_time_type(0)?.raw_offset(), -36000);
 
-        let transition_rule_dst = TransitionRule::from(AlternateTime::new(
+        let transition_rule_dst = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(43200, false, Some(b"NZST"))?,
             LocalTimeType::new(46800, true, Some(b"NZDT"))?,
             RuleDayTime::new(RuleDay::month_weekday(10, 1, 0)?, 7200),
@@ -647,7 +633,7 @@ mod tests {
         assert_eq!(transition_rule_dst.find_local_time_type(970322399)?.raw_offset(), 43200);
         assert_eq!(transition_rule_dst.find_local_time_type(970322400)?.raw_offset(), 46800);
 
-        let transition_rule_negative_dst = TransitionRule::from(AlternateTime::new(
+        let transition_rule_negative_dst = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(3600, false, Some(b"IST"))?,
             LocalTimeType::new(0, true, Some(b"GMT"))?,
             RuleDayTime::new(RuleDay::month_weekday(10, 5, 0)?, 7200),
@@ -665,7 +651,7 @@ mod tests {
         );
         assert_eq!(transition_rule_negative_dst.find_local_time_type(972781200)?.raw_offset(), 0);
 
-        let transition_rule_negative_time_1 = TransitionRule::from(AlternateTime::new(
+        let transition_rule_negative_time_1 = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(0, false, None)?,
             LocalTimeType::new(0, true, None)?,
             RuleDayTime::new(RuleDay::julian_0(100)?, 0),
@@ -677,7 +663,7 @@ mod tests {
         assert!(!transition_rule_negative_time_1.find_local_time_type(8639999)?.is_dst());
         assert!(transition_rule_negative_time_1.find_local_time_type(8640000)?.is_dst());
 
-        let transition_rule_negative_time_2 = TransitionRule::from(AlternateTime::new(
+        let transition_rule_negative_time_2 = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(-10800, false, Some(b"-03"))?,
             LocalTimeType::new(-7200, true, Some(b"-02"))?,
             RuleDayTime::new(RuleDay::month_weekday(3, 5, 0)?, -7200),
@@ -701,7 +687,7 @@ mod tests {
             -10800
         );
 
-        let transition_rule_all_year_dst = TransitionRule::from(AlternateTime::new(
+        let transition_rule_all_year_dst = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(-18000, false, Some(b"EST"))?,
             LocalTimeType::new(-14400, true, Some(b"EDT"))?,
             RuleDayTime::new(RuleDay::julian_0(0)?, 0),
@@ -722,14 +708,14 @@ mod tests {
 
     #[test]
     fn test_transition_rule_overflow() -> Result<(), Error> {
-        let transition_rule_1 = TransitionRule::from(AlternateTime::new(
+        let transition_rule_1 = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(-1, false, None)?,
             LocalTimeType::new(-1, true, None)?,
             RuleDayTime::new(RuleDay::julian_1(365)?, 0),
             RuleDayTime::new(RuleDay::julian_1(1)?, 0),
         )?);
 
-        let transition_rule_2 = TransitionRule::from(AlternateTime::new(
+        let transition_rule_2 = TransitionRule::Alternate(AlternateTime::new(
             LocalTimeType::new(1, false, None)?,
             LocalTimeType::new(1, true, None)?,
             RuleDayTime::new(RuleDay::julian_1(365)?, 0),

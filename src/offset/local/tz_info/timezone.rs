@@ -669,7 +669,10 @@ mod tests {
     fn test_no_dst() -> Result<(), Error> {
         let tz_string = b"HST10";
         let transition_rule = TransitionRule::from_tz_string(tz_string, false)?;
-        assert_eq!(transition_rule, LocalTimeType::new(-36000, false, Some(b"HST"))?.into());
+        assert_eq!(
+            transition_rule,
+            TransitionRule::Fixed(LocalTimeType::new(-36000, false, Some(b"HST"))?)
+        );
         Ok(())
     }
 
@@ -758,7 +761,7 @@ mod tests {
                 LocalTimeType::new(-36000, false, Some(b"HST"))?,
             ],
             Vec::new(),
-            Some(TransitionRule::from(LocalTimeType::new(-36000, false, Some(b"HST"))?)),
+            Some(TransitionRule::Fixed(LocalTimeType::new(-36000, false, Some(b"HST"))?)),
         )?;
 
         assert_eq!(time_zone, time_zone_result);
@@ -831,7 +834,7 @@ mod tests {
         let cet = LocalTimeType::with_offset(3600)?;
 
         let utc_local_time_types = vec![utc];
-        let fixed_extra_rule = TransitionRule::from(cet);
+        let fixed_extra_rule = TransitionRule::Fixed(cet);
 
         let time_zone_1 = TimeZone::new(vec![], utc_local_time_types.clone(), vec![], None)?;
         let time_zone_2 =
@@ -950,7 +953,7 @@ mod tests {
             vec![Transition::new(i64::min_value(), 0)],
             vec![LocalTimeType::UTC],
             vec![LeapSecond::new(0, 1)],
-            Some(TransitionRule::from(LocalTimeType::UTC)),
+            Some(TransitionRule::Fixed(LocalTimeType::UTC)),
         );
         assert!(time_zone_err.is_err());
 
