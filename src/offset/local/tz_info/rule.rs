@@ -195,18 +195,48 @@ impl AlternateTime {
     fn find_local_offset_from_local(
         &self,
         local_time: i64,
-        current_year: i32,
+        year: i32,
     ) -> Result<crate::LocalResult<FixedOffset>, Error> {
         // FIXME: handle unwraps
-        let dst_start = self.dst_start.datetime(current_year).unwrap();
-        let dst_end = self.dst_end.datetime(current_year).unwrap();
+        let std_offset = self.std.offset();
+        let dst_offset = self.dst.offset();
         let local_datetime = NaiveDateTime::from_timestamp_opt(local_time, 0).unwrap();
 
+        // The rule for a transition date may resolve to a date outside the given year.
+        // This can be caused by a rule that specifies ordinal 366 ('zero based Julian day 365') in
+        // a non-leap year, because of a negative time of day, or a time of day >= 24 hours.
+        //
+        // We resolve all six date rules that might fall in the current year.
         let mut transitions = [
-            Transition::new(dst_start, self.std.offset(), self.dst.offset()),
-            Transition::new(dst_end, self.dst.offset(), self.std.offset()),
+            Transition::new(self.dst_start.datetime(year - 1).unwrap(), std_offset, dst_offset),
+            Transition::new(self.dst_end.datetime(year - 1).unwrap(), dst_offset, std_offset),
+            Transition::new(self.dst_start.datetime(year).unwrap(), std_offset, dst_offset),
+            Transition::new(self.dst_end.datetime(year).unwrap(), dst_offset, std_offset),
+            Transition::new(self.dst_start.datetime(year + 1).unwrap(), std_offset, dst_offset),
+            Transition::new(self.dst_end.datetime(year + 1).unwrap(), dst_offset, std_offset),
         ];
         transitions.sort_unstable();
+
+        // The order of the transition dates to and from dst may swap depending on the year in case
+        // of some non-sensical DST rules.
+        // If we find the same transition repeated, like std-to-dst followed by std-to-dst, we drop
+        // one of the transitions so that the period in between is in standard time.
+        let mut i = 1;
+        let mut j = 1;
+        while i < 6 {
+            let mut k = 1;
+            if transitions[i - 1].offset_after != transitions[i].offset_before {
+                if transitions[i].offset_before == std_offset {
+                    j -= 1; // std to dst, drop the first transition
+                } else {
+                    k = 0; // dst to std, drop the last transition
+                }
+            }
+            transitions[j] = transitions[i];
+            i += 1;
+            j += k;
+        }
+        let transitions = &transitions[..j];
 
         Ok(lookup_with_dst_transitions(&transitions, local_datetime))
     }
