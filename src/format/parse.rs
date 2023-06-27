@@ -574,6 +574,41 @@ mod tests {
                 assert_eq!(parse_all($fmt, &$items), Ok(expected))
             });
         }
+        macro_rules! lit {
+            ($x:expr) => {
+                Item::Literal($x)
+            };
+        }
+        macro_rules! sp {
+            ($x:expr) => {
+                Item::Space($x)
+            };
+        }
+        macro_rules! num {
+            ($x:ident) => {
+                Item::Numeric(Numeric::$x, Pad::None)
+            };
+        }
+        macro_rules! num0 {
+            ($x:ident) => {
+                Item::Numeric(Numeric::$x, Pad::Zero)
+            };
+        }
+        macro_rules! nums {
+            ($x:ident) => {
+                Item::Numeric(Numeric::$x, Pad::Space)
+            };
+        }
+        macro_rules! fix {
+            ($x:ident) => {
+                Item::Fixed(Fixed::$x)
+            };
+        }
+        macro_rules! internal_fix {
+            ($x:ident) => {
+                Item::Fixed(Fixed::Internal(InternalFixed { val: InternalInternal::$x }))
+            };
+        }
 
         // empty string
         check!("",  []; );
