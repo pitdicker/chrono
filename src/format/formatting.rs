@@ -158,30 +158,30 @@ where
         use self::Numeric::*;
 
         let (width, v) = match (spec, self.date, self.time) {
-            (Year, Some(d), _) => (4, i64::from(d.year())),
-            (YearDiv100, Some(d), _) => (2, i64::from(d.year()).div_euclid(100)),
-            (YearMod100, Some(d), _) => (2, i64::from(d.year()).rem_euclid(100)),
-            (IsoYear, Some(d), _) => (4, i64::from(d.iso_week().year())),
-            (IsoYearDiv100, Some(d), _) => (2, i64::from(d.iso_week().year()).div_euclid(100)),
-            (IsoYearMod100, Some(d), _) => (2, i64::from(d.iso_week().year()).rem_euclid(100)),
-            (Month, Some(d), _) => (2, i64::from(d.month())),
-            (Day, Some(d), _) => (2, i64::from(d.day())),
-            (WeekFromSun, Some(d), _) => (2, i64::from(d.weeks_from(Weekday::Sun))),
-            (WeekFromMon, Some(d), _) => (2, i64::from(d.weeks_from(Weekday::Mon))),
-            (IsoWeek, Some(d), _) => (2, i64::from(d.iso_week().week())),
-            (NumDaysFromSun, Some(d), _) => (1, i64::from(d.weekday().num_days_from_sunday())),
-            (WeekdayFromMon, Some(d), _) => (1, i64::from(d.weekday().number_from_monday())),
-            (Ordinal, Some(d), _) => (3, i64::from(d.ordinal())),
-            (Hour, _, Some(t)) => (2, i64::from(t.hour())),
-            (Hour12, _, Some(t)) => (2, i64::from(t.hour12().1)),
-            (Minute, _, Some(t)) => (2, i64::from(t.minute())),
-            (Second, _, Some(t)) => (2, i64::from(t.second() + t.nanosecond() / 1_000_000_000)),
-            (Nanosecond, _, Some(t)) => (9, i64::from(t.nanosecond() % 1_000_000_000)),
+            (Year, Some(d), _) => (4, d.year()),
+            (YearDiv100, Some(d), _) => (2, d.year().div_euclid(100)),
+            (YearMod100, Some(d), _) => (2, d.year().rem_euclid(100)),
+            (IsoYear, Some(d), _) => (4, d.iso_week().year()),
+            (IsoYearDiv100, Some(d), _) => (2, d.iso_week().year().div_euclid(100)),
+            (IsoYearMod100, Some(d), _) => (2, d.iso_week().year().rem_euclid(100)),
+            (Month, Some(d), _) => (2, d.month() as i32),
+            (Day, Some(d), _) => (2, d.day() as i32),
+            (WeekFromSun, Some(d), _) => (2, d.weeks_from(Weekday::Sun)),
+            (WeekFromMon, Some(d), _) => (2, d.weeks_from(Weekday::Mon)),
+            (IsoWeek, Some(d), _) => (2, d.iso_week().week() as i32),
+            (NumDaysFromSun, Some(d), _) => (1, d.weekday().num_days_from_sunday() as i32),
+            (WeekdayFromMon, Some(d), _) => (1, d.weekday().number_from_monday() as i32),
+            (Ordinal, Some(d), _) => (3, d.ordinal() as i32),
+            (Hour, _, Some(t)) => (2, t.hour() as i32),
+            (Hour12, _, Some(t)) => (2, t.hour12().1 as i32),
+            (Minute, _, Some(t)) => (2, t.minute() as i32),
+            (Second, _, Some(t)) => (2, (t.second() + t.nanosecond() / 1_000_000_000) as i32),
+            (Nanosecond, _, Some(t)) => (9, (t.nanosecond() % 1_000_000_000) as i32),
             (Timestamp, Some(d), Some(t)) => {
                 let offset =
                     self.offset.as_ref().map(|o| i64::from(o.fix().local_minus_utc())).unwrap_or(0);
                 let timestamp = d.and_time(t).timestamp() - offset;
-                (1, timestamp)
+                return write!(f, "{}", timestamp);
             }
             (Internal(_), _, _) => return Ok(()), // for future expansion
             _ => return Err(fmt::Error),          // insufficient arguments for given format
