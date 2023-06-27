@@ -11,6 +11,8 @@ use alloc::string::{String, ToString};
 use core::borrow::Borrow;
 use core::fmt;
 use core::fmt::Write;
+use core::iter::IntoIterator;
+use core::marker::PhantomData;
 
 use crate::naive::{NaiveDate, NaiveTime};
 use crate::offset::{FixedOffset, Offset};
@@ -51,6 +53,13 @@ mod locales {
     pub(crate) fn am_pm(_locale: Locale) -> &'static [&'static str] {
         &["AM", "PM"]
     }
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+pub struct FormattingSpec<'a, I, T> {
+    pub(crate) items: I,
+    pub(crate) _generics: PhantomData<&'a T>,
 }
 
 /// A *temporary* object which can be used as an argument to `format!` or others.
@@ -105,6 +114,7 @@ where
         Formatter { date, time, offset, items, locale }
     }
 
+    #[inline]
     fn format(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for item in self.items.clone() {
             match *item.borrow() {
@@ -272,7 +282,6 @@ where
     }
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 impl<'a, I, B, Off> fmt::Display for Formatter<I, Off>
 where
     I: Iterator<Item = B> + Clone,

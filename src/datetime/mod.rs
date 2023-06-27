@@ -11,6 +11,7 @@ use alloc::string::{String, ToString};
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::fmt::Write;
+use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, hash, str};
 #[cfg(feature = "std")]
@@ -24,6 +25,7 @@ use crate::format::DelayedFormat;
 use crate::format::Locale;
 use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
 use crate::format::{Fixed, Item};
+use crate::format::{Formatter, FormattingSpec};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveDateTime, NaiveTime};
 #[cfg(feature = "clock")]
 use crate::offset::Local;
@@ -829,6 +831,57 @@ where
     #[must_use]
     pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
         self.format_with_items(StrftimeItems::new(fmt))
+    }
+
+    /// TODO
+    pub fn formatter<'a, I, J, B>(items: I) -> Option<FormattingSpec<'a, J, Self>>
+    where
+        I: IntoIterator<Item = B, IntoIter = J>,
+        J: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        // TODO: validate items
+        Some(FormattingSpec { items: items.into_iter(), _generics: PhantomData })
+    }
+
+    /// TODO
+    pub fn format_with<'a, I, B>(
+        &self,
+        formatter: &FormattingSpec<'a, I, DateTime<Tz>>,
+    ) -> Formatter<I, Tz::Offset>
+    where
+        I: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        let local = self.naive_local();
+        Formatter::new(
+            Some(local.date()),
+            Some(local.time()),
+            Some(self.offset().clone()),
+            formatter.items.clone(),
+        )
+    }
+
+    /// TODO
+    #[cfg(feature = "unstable-locales")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    pub fn format_locale_with<'a, I, B>(
+        &self,
+        formatter: &FormattingSpec<'a, I, DateTime<Tz>>,
+        locale: Locale,
+    ) -> Formatter<I, Tz::Offset>
+    where
+        I: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        let local = self.naive_local();
+        Formatter::new_with_locale(
+            Some(local.date()),
+            Some(local.time()),
+            Some(self.offset().clone()),
+            formatter.items.clone(),
+            locale,
+        )
     }
 
     /// Formats the combined date and time with the specified formatting items and locale.

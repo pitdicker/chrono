@@ -6,6 +6,7 @@
 #[cfg(any(feature = "alloc", feature = "std", test))]
 use core::borrow::Borrow;
 use core::iter::FusedIterator;
+use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, RangeInclusive, Sub, SubAssign};
 use core::{fmt, str};
 
@@ -22,10 +23,11 @@ use crate::format::{
     parse, parse_and_remainder, write_hundreds, Item, Numeric, Pad, ParseError, ParseResult,
     Parsed, StrftimeItems,
 };
+use crate::format::{Formatter, FormattingSpec};
 use crate::month::Months;
 use crate::naive::{IsoWeek, NaiveDateTime, NaiveTime};
 use crate::oldtime::Duration as OldDuration;
-use crate::{Datelike, Duration, Weekday};
+use crate::{Datelike, Duration, Utc, Weekday};
 
 use super::internals::{self, DateImpl, Mdf, Of, YearFlags};
 use super::isoweek;
@@ -1298,6 +1300,43 @@ impl NaiveDate {
         self.format_with_items(StrftimeItems::new(fmt))
     }
 
+    /// TODO
+    pub fn formatter<'a, I, J>(items: I) -> Option<FormattingSpec<'a, J, Self>>
+    where
+        I: IntoIterator<Item = Item<'a>, IntoIter = J> + Clone,
+        J: Iterator<Item = Item<'a>> + Clone,
+    {
+        // TODO: validate items
+        Some(FormattingSpec { items: items.into_iter(), _generics: PhantomData })
+    }
+
+    /// TODO
+    pub fn format_with<'a, I, B>(
+        &self,
+        formatter: &FormattingSpec<'a, I, NaiveDate>,
+    ) -> Formatter<I, Utc>
+    where
+        I: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        Formatter::new(Some(*self), None, None, formatter.items.clone())
+    }
+
+    /// TODO
+    #[cfg(feature = "unstable-locales")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    pub fn format_localized_with<'a, I, B>(
+        &self,
+        formatter: &FormattingSpec<'a, I, NaiveDate>,
+        locale: Locale,
+    ) -> Formatter<I, Utc>
+    where
+        I: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        Formatter::new_with_locale(Some(*self), None, None, formatter.items.clone(), locale)
+    }
+
     /// Formats the date with the specified formatting items and locale.
     #[cfg(feature = "unstable-locales")]
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
@@ -2347,7 +2386,8 @@ mod serde {
 
 #[cfg(test)]
 mod tests {
-    use super::{Days, Months, NaiveDate, MAX_YEAR, MIN_YEAR};
+    use super::{Days, Item, Months, NaiveDate, MAX_YEAR, MIN_YEAR};
+    use crate::format::strftime::StrftimeItems;
     use crate::oldtime::Duration;
     use crate::{Datelike, Weekday};
     use std::{i32, u32};
@@ -3202,6 +3242,45 @@ mod tests {
         assert!(dt.with_month0(4294967295).is_none());
         assert!(dt.with_day0(4294967295).is_none());
         assert!(dt.with_ordinal0(4294967295).is_none());
+    }
+
+    #[test]
+    fn test_format_with() {
+        let fmt_str = "%a %Y-%m-%d";
+        let dt1 = NaiveDate::from_ymd_opt(2023, 4, 18).unwrap();
+        let dt2 = NaiveDate::from_ymd_opt(2023, 9, 2).unwrap();
+
+        // Parses format string once, allocates
+        let fmt_items = StrftimeItems::new(&fmt_str).parse().unwrap();
+        let formatter = NaiveDate::formatter(fmt_items).unwrap();
+        assert_eq!(dt1.format_with(&formatter).to_string(), "Tue 2023-04-18");
+        assert_eq!(dt2.format_with(&formatter).to_string(), "Sat 2023-09-02");
+
+        // Reparses format string on creation and every use
+        let fmt_items = StrftimeItems::new(&fmt_str);
+        let formatter = NaiveDate::formatter(fmt_items).unwrap();
+        assert_eq!(dt1.format_with(&formatter).to_string(), "Tue 2023-04-18");
+        assert_eq!(dt2.format_with(&formatter).to_string(), "Sat 2023-09-02");
+
+        let mut buf = [
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+        ];
+        // parses format string once, into existing slice
+        let fmt_items = StrftimeItems::new(fmt_str).parse_into_slice(&mut buf).unwrap();
+        // format with slice (cloning items is cheap)
+        let formatter = NaiveDate::formatter(fmt_items.iter().cloned()).unwrap();
+        assert_eq!(dt1.format_with(&formatter).to_string(), "Tue 2023-04-18");
+        assert_eq!(dt2.format_with(&formatter).to_string(), "Sat 2023-09-02");
+        // format with array
+        let formatter = NaiveDate::formatter(buf.into_iter()).unwrap();
+        assert_eq!(dt1.format_with(&formatter).to_string(), "Tue 2023-04-18");
+        assert_eq!(dt2.format_with(&formatter).to_string(), "Sat 2023-09-02");
     }
 
     //   MAX_YEAR-12-31 minus 0000-01-01

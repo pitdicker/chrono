@@ -274,6 +274,19 @@ impl<'a> StrftimeItems<'a> {
     pub const fn new_with_locale(s: &'a str, locale: Locale) -> StrftimeItems<'a> {
         StrftimeItems { remainder: s, queue: &[], locale_str: "", locale: Some(locale) }
     }
+
+    /// TODO
+    pub fn parse(self) -> Option<Vec<Item<'a>>> {
+        // TODO: validate
+        Some(self.collect())
+    }
+
+    /// TODO
+    pub fn parse_into_slice<'b>(self, buf: &'b mut [Item<'a>]) -> Option<&'b [Item<'a>]> {
+        let len = buf.iter_mut().zip(self).map(|(buf, item)| *buf = item).count();
+        // TODO: validate
+        Some(&buf[..len])
+    }
 }
 
 const HAVE_ALTERNATES: &str = "z";
@@ -776,5 +789,50 @@ mod tests {
         assert_eq!(size_of::<Item>(), 24);
         assert_eq!(size_of::<StrftimeItems>(), 56);
         assert_eq!(size_of::<Locale>(), 2);
+    }
+
+    #[test]
+    fn test_strftime_no_std() {
+        let fmt_str = StrftimeItems::new("%Y-%m-%dT%H:%M:%S%z");
+        let mut buf = [
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+        ];
+        let len = buf.iter_mut().zip(fmt_str).map(|(buf, item)| *buf = item).count();
+        let fmt_items = &buf[..len];
+        let dt = Utc.with_ymd_and_hms(2014, 5, 7, 12, 34, 56).unwrap();
+        assert_eq!(&dt.format_with_items(fmt_items.iter()).to_string(), "2014-05-07T12:34:56+0000");
+    }
+
+    #[test]
+    fn test_strftime_parse_into_slice() {
+        let mut buf = [
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+            Item::Error,
+        ];
+        let fmt_items =
+            StrftimeItems::new("%Y-%m-%dT%H:%M:%S%z").parse_into_slice(&mut buf).unwrap();
+        let dt = Utc.with_ymd_and_hms(2014, 5, 7, 12, 34, 56).unwrap();
+        assert_eq!(dt.format_with_items(fmt_items.iter()).to_string(), "2014-05-07T12:34:56+0000");
     }
 }

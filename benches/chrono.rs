@@ -151,6 +151,13 @@ fn bench_format(c: &mut Criterion) {
     c.bench_function("bench_format", |b| b.iter(|| format!("{}", dt.format("%Y-%m-%d %H-%M-%S"))));
 }
 
+fn bench_format_with(c: &mut Criterion) {
+    let dt = Local::now();
+    let fmt_items: Vec<_> = StrftimeItems::new("%Y-%m-%d %H-%M-%S").collect();
+    let formatter = DateTime::formatter(&fmt_items).unwrap();
+    c.bench_function("bench_format_with", |b| b.iter(|| format!("{}", dt.format_with(&formatter))));
+}
+
 fn bench_format_with_items(c: &mut Criterion) {
     let dt = Local::now();
     let items: Vec<_> = StrftimeItems::new("%Y-%m-%d %H-%M-%S").collect();
@@ -176,6 +183,16 @@ fn bench_format_manual(c: &mut Criterion) {
     });
 }
 
+#[cfg(feature = "unstable-locales")]
+fn bench_format_locale_with(c: &mut Criterion) {
+    let dt = Local::now();
+    let fmt_items: Vec<_> = StrftimeItems::new("%A %d %B %y %l-%M-%S %p").collect();
+    let formatter = DateTime::formatter(&fmt_items).unwrap();
+    c.bench_function("bench_format_locale_with", |b| {
+        b.iter(|| format!("{}", dt.format_locale_with(&formatter, Locale::nl_NL)))
+    });
+}
+
 criterion_group!(
     benches,
     bench_datetime_parse_from_rfc2822,
@@ -188,12 +205,13 @@ criterion_group!(
     bench_get_local_time,
     bench_parse_strftime,
     bench_format,
+    bench_format_with,
     bench_format_with_items,
     bench_format_manual,
 );
 
 #[cfg(feature = "unstable-locales")]
-criterion_group!(unstable_locales, bench_parse_strftime_localized,);
+criterion_group!(unstable_locales, bench_parse_strftime_localized, bench_format_locale_with);
 
 #[cfg(not(feature = "unstable-locales"))]
 criterion_main!(benches);
