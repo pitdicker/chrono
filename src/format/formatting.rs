@@ -87,93 +87,67 @@ impl Locales {
 #[cfg(any(feature = "alloc", feature = "std", test))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
 #[derive(Debug)]
-pub struct DelayedFormat<I> {
+pub struct Formatter<I, O> {
     /// The date view, if any.
     date: Option<NaiveDate>,
     /// The time view, if any.
     time: Option<NaiveTime>,
-    /// The name and local-to-UTC difference for the offset (timezone), if any.
-    off: Option<(String, FixedOffset)>,
+    /// The offset from UTC, if any
+    offset: Option<O>,
     /// An iterator returning formatting items.
     items: I,
-    /// Locale used for text.
-    // TODO: Only used with the locale feature. We should make this property
-    // only present when the feature is enabled.
+    /// Locale used for text
     #[cfg(feature = "unstable-locales")]
     locale: Option<Locale>,
 }
 
 #[cfg(any(feature = "alloc", feature = "std", test))]
-impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> DelayedFormat<I> {
-    /// Makes a new `DelayedFormat` value out of local date and time.
+impl<'a, I, B, Off> Formatter<I, Off>
+where
+    I: Iterator<Item = B> + Clone,
+    B: Borrow<Item<'a>>,
+    Off: Offset + fmt::Display,
+{
+    /// Makes a new `Formatter` value out of local date and time and UTC offset.
     #[must_use]
-    pub fn new(date: Option<NaiveDate>, time: Option<NaiveTime>, items: I) -> DelayedFormat<I> {
-        DelayedFormat {
+    pub fn new(
+        date: Option<NaiveDate>,
+        time: Option<NaiveTime>,
+        offset: Option<Off>,
+        items: I,
+    ) -> Formatter<I, Off> {
+        Formatter {
             date,
             time,
-            off: None,
+            offset,
             items,
             #[cfg(feature = "unstable-locales")]
             locale: None,
         }
-    }
-
-    /// Makes a new `DelayedFormat` value out of local date and time and UTC offset.
-    #[must_use]
-    pub fn new_with_offset<Off>(
-        date: Option<NaiveDate>,
-        time: Option<NaiveTime>,
-        offset: &Off,
-        items: I,
-    ) -> DelayedFormat<I>
-    where
-        Off: Offset + fmt::Display,
-    {
-        let name_and_diff = (offset.to_string(), offset.fix());
-        DelayedFormat {
-            date,
-            time,
-            off: Some(name_and_diff),
-            items,
-            #[cfg(feature = "unstable-locales")]
-            locale: None,
-        }
-    }
-
-    /// Makes a new `DelayedFormat` value out of local date and time and locale.
-    #[cfg(feature = "unstable-locales")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
-    #[must_use]
-    pub fn new_with_locale(
-        date: Option<NaiveDate>,
-        time: Option<NaiveTime>,
-        items: I,
-        locale: Locale,
-    ) -> DelayedFormat<I> {
-        DelayedFormat { date, time, off: None, items, locale: Some(locale) }
     }
 
     /// Makes a new `DelayedFormat` value out of local date and time, UTC offset and locale.
     #[cfg(feature = "unstable-locales")]
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
     #[must_use]
-    pub fn new_with_offset_and_locale<Off>(
+    pub fn new_with_locale(
         date: Option<NaiveDate>,
         time: Option<NaiveTime>,
-        offset: &Off,
+        offset: Option<Off>,
         items: I,
         locale: Locale,
-    ) -> DelayedFormat<I>
-    where
-        Off: Offset + fmt::Display,
-    {
-        let name_and_diff = (offset.to_string(), offset.fix());
-        DelayedFormat { date, time, off: Some(name_and_diff), items, locale: Some(locale) }
+    ) -> Formatter<I, Off> {
+        Formatter { date, time, offset, items, locale: Some(locale) }
     }
 }
 
 #[cfg(any(feature = "alloc", feature = "std", test))]
-impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> fmt::Display for DelayedFormat<I> {
+impl<'a, I, B, Off> fmt::Display for Formatter<I, Off>
+where
+    I: Iterator<Item = B> + Clone,
+    B: Borrow<Item<'a>>,
+    Off: Offset + fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         #[cfg(any(feature = "alloc", feature = "std", test))]
         #[allow(clippy::recursive_format_impl)]
@@ -191,17 +165,112 @@ impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> fmt::Display for De
         let locale = None;
         #[cfg(feature = "unstable-locales")]
         let locale = self.locale;
+
+        let off = self.offset.as_ref().map(|off| (off.to_string(), off.fix()));
         for item in self.items.clone() {
             format_inner(
                 f,
                 self.date.as_ref(),
                 self.time.as_ref(),
-                self.off.as_ref(),
+                off.as_ref(),
                 item.borrow(),
                 locale,
             )?;
         }
         Ok(())
+    }
+}
+
+/// Only used to make `DelayedFormat` a wrapper around `Formatter`.
+#[cfg(any(feature = "alloc", feature = "std", test))]
+#[derive(Clone, Debug)]
+struct OffsetFormatter {
+    offset: FixedOffset,
+    tz_name: String,
+}
+
+#[cfg(any(feature = "alloc", feature = "std", test))]
+impl Offset for OffsetFormatter {
+    fn fix(&self) -> FixedOffset {
+        self.offset
+    }
+}
+
+#[cfg(any(feature = "alloc", feature = "std", test))]
+impl fmt::Display for OffsetFormatter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.tz_name)
+    }
+}
+
+/// A *temporary* object which can be used as an argument to `format!` or others.
+/// This is normally constructed via `format` methods of each date and time type.
+#[cfg(any(feature = "alloc", feature = "std", test))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
+#[derive(Debug)]
+pub struct DelayedFormat<I> {
+    inner: Formatter<I, OffsetFormatter>,
+}
+
+#[cfg(any(feature = "alloc", feature = "std", test))]
+impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> DelayedFormat<I> {
+    /// Makes a new `DelayedFormat` value out of local date and time.
+    #[must_use]
+    pub fn new(date: Option<NaiveDate>, time: Option<NaiveTime>, items: I) -> DelayedFormat<I> {
+        DelayedFormat { inner: Formatter::new(date, time, None, items) }
+    }
+
+    /// Makes a new `DelayedFormat` value out of local date and time and UTC offset.
+    #[must_use]
+    pub fn new_with_offset<Off>(
+        date: Option<NaiveDate>,
+        time: Option<NaiveTime>,
+        offset: &Off,
+        items: I,
+    ) -> DelayedFormat<I>
+    where
+        Off: Offset + fmt::Display,
+    {
+        let offset = Some(OffsetFormatter { offset: offset.fix(), tz_name: offset.to_string() });
+        DelayedFormat { inner: Formatter::new(date, time, offset, items) }
+    }
+
+    /// Makes a new `DelayedFormat` value out of local date and time and locale.
+    #[cfg(feature = "unstable-locales")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    #[must_use]
+    pub fn new_with_locale(
+        date: Option<NaiveDate>,
+        time: Option<NaiveTime>,
+        items: I,
+        locale: Locale,
+    ) -> DelayedFormat<I> {
+        DelayedFormat { inner: Formatter::new_with_locale(date, time, None, items, locale) }
+    }
+
+    /// Makes a new `DelayedFormat` value out of local date and time, UTC offset and locale.
+    #[cfg(feature = "unstable-locales")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    #[must_use]
+    pub fn new_with_offset_and_locale<Off>(
+        date: Option<NaiveDate>,
+        time: Option<NaiveTime>,
+        offset: &Off,
+        items: I,
+        locale: Locale,
+    ) -> DelayedFormat<I>
+    where
+        Off: Offset + fmt::Display,
+    {
+        let offset = Some(OffsetFormatter { offset: offset.fix(), tz_name: offset.to_string() });
+        DelayedFormat { inner: Formatter::new_with_locale(date, time, offset, items, locale) }
+    }
+}
+
+#[cfg(any(feature = "alloc", feature = "std", test))]
+impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> fmt::Display for DelayedFormat<I> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }
 
@@ -220,10 +289,11 @@ where
     I: Iterator<Item = B> + Clone,
     B: Borrow<Item<'a>>,
 {
-    for item in items {
-        format_inner(f, date, time, off, item.borrow(), None)?;
-    }
-    Ok(())
+    use std::fmt::Display;
+    let offset = off
+        .as_ref()
+        .map(|(tz_name, offset)| OffsetFormatter { tz_name: tz_name.clone(), offset: *offset });
+    Formatter::new(date.copied(), time.copied(), offset, items).fmt(f)
 }
 /// Formats single formatting item
 #[cfg(any(feature = "alloc", feature = "std", test))]
@@ -235,7 +305,11 @@ pub fn format_item(
     off: Option<&(String, FixedOffset)>,
     item: &Item<'_>,
 ) -> fmt::Result {
-    format_inner(f, date, time, off, item, None)
+    use std::fmt::Display;
+    let offset = off
+        .as_ref()
+        .map(|(tz_name, offset)| OffsetFormatter { tz_name: tz_name.clone(), offset: *offset });
+    Formatter::new(date.copied(), time.copied(), offset, [item].into_iter()).fmt(f)
 }
 
 /// Tries to format given arguments with given formatting items.
@@ -254,10 +328,11 @@ where
     I: Iterator<Item = B> + Clone,
     B: Borrow<Item<'a>>,
 {
-    for item in items {
-        format_inner(f, date, time, off, item.borrow(), Some(locale))?;
-    }
-    Ok(())
+    use std::fmt::Display;
+    let offset = off
+        .as_ref()
+        .map(|(tz_name, offset)| OffsetFormatter { tz_name: tz_name.clone(), offset: *offset });
+    Formatter::new_with_locale(date.copied(), time.copied(), offset, items, locale).fmt(f)
 }
 
 /// Formats single formatting item
@@ -271,7 +346,12 @@ pub fn format_item_localized(
     item: &Item<'_>,
     locale: Locale,
 ) -> fmt::Result {
-    format_inner(f, date, time, off, item, Some(locale))
+    use std::fmt::Display;
+    let offset = off
+        .as_ref()
+        .map(|(tz_name, offset)| OffsetFormatter { tz_name: tz_name.clone(), offset: *offset });
+    Formatter::new_with_locale(date.copied(), time.copied(), offset, [item].into_iter(), locale)
+        .fmt(f)
 }
 
 #[cfg(any(feature = "alloc", feature = "std", test))]
@@ -526,7 +606,7 @@ pub(crate) fn write_rfc3339(
     // this is faster in this way.
     write!(result, "{:?}", dt)?;
     let item = [Item::Fixed(Fixed::TimezoneOffsetColon)];
-    let formatter = DelayedFormat::new_with_offset(None, None, &off, item.iter());
+    let formatter = Formatter::new(None, None, Some(off), item.iter());
     write!(result, "{}", formatter)
 }
 
@@ -551,8 +631,7 @@ pub(crate) fn write_rfc2822(
     off: FixedOffset,
 ) -> fmt::Result {
     let item = [Item::Fixed(Fixed::RFC2822)];
-    let formatter =
-        DelayedFormat::new_with_offset(Some(dt.date()), Some(dt.time()), &off, item.iter());
+    let formatter = Formatter::new(Some(dt.date()), Some(dt.time()), Some(off), item.iter());
     write!(result, "{}", formatter)
 }
 
