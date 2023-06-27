@@ -8,24 +8,18 @@ extern crate alloc;
 
 #[cfg(feature = "alloc")]
 use alloc::string::{String, ToString};
-#[cfg(any(feature = "alloc", feature = "std", test))]
 use core::borrow::Borrow;
 use core::fmt;
 use core::fmt::Write;
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 use crate::naive::{NaiveDate, NaiveTime};
-#[cfg(any(feature = "alloc", feature = "std", test))]
 use crate::offset::{FixedOffset, Offset};
-#[cfg(any(feature = "alloc", feature = "std", test))]
 use crate::{Datelike, Timelike, Weekday};
 
 #[cfg(feature = "unstable-locales")]
 use super::locales;
-#[cfg(any(feature = "alloc", feature = "std", test))]
 use super::{Fixed, InternalFixed, InternalInternal, Item, Locale, Numeric, Pad};
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 struct Locales {
     short_months: &'static [&'static str],
     long_months: &'static [&'static str],
@@ -34,7 +28,6 @@ struct Locales {
     am_pm: &'static [&'static str],
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 impl Locales {
     fn new(_locale: Option<Locale>) -> Self {
         #[cfg(feature = "unstable-locales")]
@@ -84,8 +77,6 @@ impl Locales {
 
 /// A *temporary* object which can be used as an argument to `format!` or others.
 /// This is normally constructed via `format` methods of each date and time type.
-#[cfg(any(feature = "alloc", feature = "std", test))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
 #[derive(Debug)]
 pub struct Formatter<I, O> {
     /// The date view, if any.
@@ -101,7 +92,6 @@ pub struct Formatter<I, O> {
     locale: Option<Locale>,
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 impl<'a, I, B, Off> Formatter<I, Off>
 where
     I: Iterator<Item = B> + Clone,
@@ -500,7 +490,6 @@ pub fn format_item_localized(
         .fmt(f)
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Colons {
     None,
@@ -511,7 +500,6 @@ enum Colons {
 
 /// Prints an offset from UTC in the format of `+HHMM` or `+HH:MM`.
 /// `Z` instead of `+00[:]00` is allowed when `allow_zulu` is true.
-#[cfg(any(feature = "alloc", feature = "std", test))]
 fn write_local_minus_utc(
     result: &mut fmt::Formatter,
     off: FixedOffset,
@@ -545,6 +533,7 @@ fn write_local_minus_utc(
 
 /// Writes the date, time and offset to the string. same as `%Y-%m-%dT%H:%M:%S%.f%:z`
 #[cfg(any(feature = "alloc", feature = "std", test))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
 pub(crate) fn write_rfc3339(
     result: &mut String,
     dt: crate::NaiveDateTime,
@@ -559,7 +548,6 @@ pub(crate) fn write_rfc3339(
 }
 
 /// Writes the date, time and offset to the string. same as `%Y-%m-%dT%H:%M:%S%.f%:z`
-#[cfg(any(feature = "alloc", feature = "std", test))]
 pub(crate) fn write_rfc3339_inner(
     result: &mut fmt::Formatter,
     dt: crate::NaiveDateTime,
@@ -571,8 +559,9 @@ pub(crate) fn write_rfc3339_inner(
     write_local_minus_utc(result, off, false, Colons::Single)
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 /// write datetimes like `Tue, 1 Jul 2003 10:52:37 +0200`, same as `%a, %d %b %Y %H:%M:%S %z`
+#[cfg(any(feature = "alloc", feature = "std", test))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
 pub(crate) fn write_rfc2822(
     result: &mut String,
     dt: crate::NaiveDateTime,
@@ -583,7 +572,6 @@ pub(crate) fn write_rfc2822(
     write!(result, "{}", formatter)
 }
 
-#[cfg(any(feature = "alloc", feature = "std", test))]
 /// write datetimes like `Tue, 1 Jul 2003 10:52:37 +0200`, same as `%a, %d %b %Y %H:%M:%S %z`
 fn write_rfc2822_inner(
     result: &mut fmt::Formatter,

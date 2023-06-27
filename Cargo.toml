@@ -24,7 +24,7 @@ std = []
 clock = ["std", "winapi", "iana-time-zone"]
 oldtime = ["time"]
 wasmbind = ["wasm-bindgen", "js-sys"]
-unstable-locales = ["pure-rust-locales", "alloc"]
+unstable-locales = ["pure-rust-locales"]
 __internal_bench = ["criterion"]
 __doctest = []
 

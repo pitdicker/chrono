@@ -56,7 +56,8 @@ pub(crate) mod locales;
 
 pub(crate) use formatting::write_hundreds;
 #[cfg(any(feature = "alloc", feature = "std", test))]
-pub use formatting::{format, format_item, DelayedFormat, Formatter};
+pub use formatting::{format, format_item, DelayedFormat};
+pub use formatting::Formatter;
 #[cfg(feature = "unstable-locales")]
 pub use formatting::{format_item_localized, format_localized};
 #[cfg(any(feature = "alloc", feature = "std", test))]
