@@ -20,58 +20,36 @@ use crate::{Datelike, Timelike, Weekday};
 use super::locales;
 use super::{Fixed, InternalFixed, InternalInternal, Item, Locale, Numeric, Pad};
 
-struct Locales {
-    short_months: &'static [&'static str],
-    long_months: &'static [&'static str],
-    short_weekdays: &'static [&'static str],
-    long_weekdays: &'static [&'static str],
-    am_pm: &'static [&'static str],
-}
-
-impl Locales {
-    fn new(_locale: Option<Locale>) -> Self {
-        #[cfg(feature = "unstable-locales")]
-        {
-            let locale = _locale.unwrap_or(Locale::POSIX);
-            Self {
-                short_months: locales::short_months(locale),
-                long_months: locales::long_months(locale),
-                short_weekdays: locales::short_weekdays(locale),
-                long_weekdays: locales::long_weekdays(locale),
-                am_pm: locales::am_pm(locale),
-            }
-        }
-        #[cfg(not(feature = "unstable-locales"))]
-        Self {
-            short_months: &[
-                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-            ],
-            long_months: &[
-                "January",
-                "February",
-                "March",
-                "April",
-                "May",
-                "June",
-                "July",
-                "August",
-                "September",
-                "October",
-                "November",
-                "December",
-            ],
-            short_weekdays: &["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-            long_weekdays: &[
-                "Sunday",
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-            ],
-            am_pm: &["AM", "PM"],
-        }
+#[cfg(not(feature = "unstable-locales"))]
+mod locales {
+    use crate::format::Locale;
+    pub(crate) fn short_months(_locale: Locale) -> &'static [&'static str] {
+        &["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    }
+    pub(crate) fn long_months(_locale: Locale) -> &'static [&'static str] {
+        &[
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ]
+    }
+    pub(crate) fn short_weekdays(_locale: Locale) -> &'static [&'static str] {
+        &["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    }
+    pub(crate) fn long_weekdays(_locale: Locale) -> &'static [&'static str] {
+        &["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    }
+    pub(crate) fn am_pm(_locale: Locale) -> &'static [&'static str] {
+        &["AM", "PM"]
     }
 }
 
@@ -88,8 +66,8 @@ pub struct Formatter<I, O> {
     /// An iterator returning formatting items.
     items: I,
     /// Locale used for text
-    #[cfg(feature = "unstable-locales")]
-    locale: Option<Locale>,
+    /// ZST if the `unstable-locales` feature is not enabled.
+    locale: Locale,
 }
 
 impl<'a, I, B, Off> Formatter<I, Off>
@@ -106,14 +84,11 @@ where
         offset: Option<Off>,
         items: I,
     ) -> Formatter<I, Off> {
-        Formatter {
-            date,
-            time,
-            offset,
-            items,
-            #[cfg(feature = "unstable-locales")]
-            locale: None,
-        }
+        #[cfg(not(feature = "unstable-locales"))]
+        let locale = Locale;
+        #[cfg(feature = "unstable-locales")]
+        let locale = Locale::POSIX;
+        Formatter { date, time, offset, items, locale }
     }
 
     /// Makes a new `DelayedFormat` value out of local date and time, UTC offset and locale.
@@ -127,7 +102,7 @@ where
         items: I,
         locale: Locale,
     ) -> Formatter<I, Off> {
-        Formatter { date, time, offset, items, locale: Some(locale) }
+        Formatter { date, time, offset, items, locale }
     }
 
     fn format(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -196,11 +171,6 @@ where
     fn format_fixed(&self, f: &mut fmt::Formatter, spec: &Fixed) -> fmt::Result {
         use self::Fixed::*;
 
-        #[cfg(not(feature = "unstable-locales"))]
-        let locale = Locales::new(None);
-        #[cfg(feature = "unstable-locales")]
-        let locale = Locales::new(self.locale);
-
         macro_rules! internal_fix {
             ($x:ident) => {
                 Fixed::Internal(InternalFixed { val: InternalInternal::$x })
@@ -209,25 +179,33 @@ where
 
         match (spec, self.date, self.time, self.offset.as_ref()) {
             (ShortMonthName, Some(d), _, _) => {
-                f.write_str(locale.short_months[d.month0() as usize])
+                f.write_str(locales::short_months(self.locale)[d.month0() as usize])
             }
-            (LongMonthName, Some(d), _, _) => f.write_str(locale.long_months[d.month0() as usize]),
-            (ShortWeekdayName, Some(d), _, _) => {
-                f.write_str(locale.short_weekdays[d.weekday().num_days_from_sunday() as usize])
+            (LongMonthName, Some(d), _, _) => {
+                f.write_str(locales::long_months(self.locale)[d.month0() as usize])
             }
-            (LongWeekdayName, Some(d), _, _) => {
-                f.write_str(locale.long_weekdays[d.weekday().num_days_from_sunday() as usize])
-            }
+            (ShortWeekdayName, Some(d), _, _) => f.write_str(
+                locales::short_weekdays(self.locale)[d.weekday().num_days_from_sunday() as usize],
+            ),
+            (LongWeekdayName, Some(d), _, _) => f.write_str(
+                locales::long_weekdays(self.locale)[d.weekday().num_days_from_sunday() as usize],
+            ),
             (LowerAmPm, _, Some(t), _) => {
-                let ampm = if t.hour12().0 { locale.am_pm[1] } else { locale.am_pm[0] };
+                let ampm = if t.hour12().0 {
+                    locales::am_pm(self.locale)[1]
+                } else {
+                    locales::am_pm(self.locale)[0]
+                };
                 for c in ampm.chars().flat_map(|c| c.to_lowercase()) {
                     f.write_char(c)?
                 }
                 Ok(())
             }
-            (UpperAmPm, _, Some(t), _) => {
-                f.write_str(if t.hour12().0 { locale.am_pm[1] } else { locale.am_pm[0] })
-            }
+            (UpperAmPm, _, Some(t), _) => f.write_str(if t.hour12().0 {
+                locales::am_pm(self.locale)[1]
+            } else {
+                locales::am_pm(self.locale)[0]
+            }),
             (Nanosecond, _, Some(t), _) => {
                 let nano = t.nanosecond() % 1_000_000_000;
                 if nano == 0 {
@@ -284,7 +262,7 @@ where
                 write_local_minus_utc(f, off.fix(), true, Colons::None)
             }
             (RFC2822, Some(d), Some(t), Some(off)) => {
-                write_rfc2822_inner(f, &d, &t, off.fix(), locale)
+                write_rfc2822_inner(f, &d, &t, off.fix(), self.locale)
             }
             (RFC3339, Some(d), Some(t), Some(off)) => {
                 write_rfc3339_inner(f, crate::NaiveDateTime::new(d, t), off.fix())
@@ -578,7 +556,7 @@ fn write_rfc2822_inner(
     d: &NaiveDate,
     t: &NaiveTime,
     off: FixedOffset,
-    locale: Locales,
+    locale: Locale,
 ) -> fmt::Result {
     let year = d.year();
     // RFC2822 is only defined on years 0 through 9999
@@ -586,11 +564,12 @@ fn write_rfc2822_inner(
         return Err(fmt::Error);
     }
 
-    result.write_str(locale.short_weekdays[d.weekday().num_days_from_sunday() as usize])?;
+    result
+        .write_str(locales::short_weekdays(locale)[d.weekday().num_days_from_sunday() as usize])?;
     result.write_str(", ")?;
     write_hundreds(result, d.day() as u8)?;
     result.write_char(' ')?;
-    result.write_str(locale.short_months[d.month0() as usize])?;
+    result.write_str(locales::short_months(locale)[d.month0() as usize])?;
     result.write_char(' ')?;
     write_hundreds(result, (year / 100) as u8)?;
     write_hundreds(result, (year % 100) as u8)?;

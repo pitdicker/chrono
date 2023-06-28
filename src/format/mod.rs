@@ -71,7 +71,7 @@ pub use strftime::StrftimeItems;
 
 #[cfg(not(feature = "unstable-locales"))]
 #[derive(Copy, Clone, Debug)]
-struct Locale;
+pub(crate) struct Locale;
 
 /// An uninhabited type used for `InternalNumeric` and `InternalFixed` below.
 #[derive(Clone, PartialEq, Eq, Hash)]
