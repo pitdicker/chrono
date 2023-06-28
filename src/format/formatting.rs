@@ -604,3 +604,13 @@ pub(crate) fn write_hundreds(w: &mut impl Write, n: u8) -> fmt::Result {
     w.write_char(tens as char)?;
     w.write_char(ones as char)
 }
+
+
+#[test]
+fn test_type_sizes() {
+    use crate::format::StrftimeItems;
+    use core::mem::size_of;
+    assert_eq!(size_of::<DelayedFormat<StrftimeItems<'_>>>(), 88);
+    assert_eq!(size_of::<DelayedFormat<std::slice::Iter<'_, Item<'_>>>>(), 72);
+    assert_eq!(size_of::<Formatter<std::slice::Iter<'_, Item<'_>>, FixedOffset>>(), 48);
+}
