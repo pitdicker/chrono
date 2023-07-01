@@ -14,7 +14,7 @@ use core::fmt;
 use core::fmt::Write;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-use crate::naive::{NaiveDate, NaiveTime};
+use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::offset::{FixedOffset, Offset};
 #[cfg(any(feature = "alloc", feature = "std"))]
@@ -481,7 +481,7 @@ fn format_inner(
                 // same as `%Y-%m-%dT%H:%M:%S%.f%:z`
                 {
                     if let (Some(d), Some(t), Some(&(_, off))) = (date, time, off) {
-                        Some(write_rfc3339(result, crate::NaiveDateTime::new(*d, *t), off))
+                        Some(write_rfc3339(result, NaiveDateTime::new(*d, *t), off))
                     } else {
                         None
                     }
@@ -583,7 +583,7 @@ impl OffsetFormat {
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) fn write_rfc3339(
     result: &mut String,
-    dt: crate::NaiveDateTime,
+    dt: NaiveDateTime,
     off: FixedOffset,
 ) -> fmt::Result {
     // reuse `Debug` impls which already print ISO 8601 format.
@@ -602,7 +602,7 @@ pub(crate) fn write_rfc3339(
 /// write datetimes like `Tue, 1 Jul 2003 10:52:37 +0200`, same as `%a, %d %b %Y %H:%M:%S %z`
 pub(crate) fn write_rfc2822(
     result: &mut String,
-    dt: crate::NaiveDateTime,
+    dt: NaiveDateTime,
     off: FixedOffset,
 ) -> fmt::Result {
     write_rfc2822_inner(result, &dt.date(), &dt.time(), off, Locales::new(None))
