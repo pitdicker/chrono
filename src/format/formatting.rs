@@ -5,47 +5,22 @@
 
 #[cfg(feature = "alloc")]
 use alloc::string::{String, ToString};
-#[cfg(any(feature = "alloc", feature = "std"))]
 use core::borrow::Borrow;
-#[cfg(any(feature = "alloc", feature = "std"))]
-use core::fmt::Display;
-use core::fmt::{self, Write};
+use core::fmt::{self, Display, Write};
 
-#[cfg(any(
-    feature = "alloc",
-    feature = "std",
-    feature = "serde",
-    feature = "rustc-serialize"
-))]
 use crate::datetime::SecondsFormat;
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::offset::Offset;
-#[cfg(any(
-    feature = "alloc",
-    feature = "std",
-    feature = "serde",
-    feature = "rustc-serialize"
-))]
-use crate::{Datelike, FixedOffset, NaiveDateTime, Timelike};
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::{NaiveDate, NaiveTime, Weekday};
+use crate::{
+    Datelike, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Offset, Timelike, Weekday,
+};
 
-#[cfg(any(feature = "alloc", feature = "std"))]
 use super::locales;
-#[cfg(any(
-    feature = "alloc",
-    feature = "std",
-    feature = "serde",
-    feature = "rustc-serialize"
-))]
-use super::{Colons, OffsetFormat, OffsetPrecision, Pad};
-#[cfg(any(feature = "alloc", feature = "std"))]
-use super::{Fixed, InternalFixed, InternalInternal, Item, Locale, Numeric};
-#[cfg(any(feature = "alloc", feature = "std"))]
+use super::{
+    Colons, Fixed, InternalFixed, InternalInternal, Item, Locale, Numeric, OffsetFormat,
+    OffsetPrecision, Pad,
+};
 use locales::*;
 
 /// A *temporary* object which can be used as an argument to [`format!`] or others.
-#[cfg(any(feature = "alloc", feature = "std"))]
 #[derive(Debug)]
 pub struct Formatter<I, Off> {
     /// The date view, if any.
@@ -61,7 +36,6 @@ pub struct Formatter<I, Off> {
     locale: Locale,
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
 impl<'a, I, B, Off> Formatter<I, Off>
 where
     I: Iterator<Item = B> + Clone,
@@ -110,6 +84,7 @@ where
         for item in self.items.clone() {
             match *item.borrow() {
                 Item::Literal(s) | Item::Space(s) => w.write_str(s),
+                #[cfg(any(feature = "alloc", feature = "std"))]
                 Item::OwnedLiteral(ref s) | Item::OwnedSpace(ref s) => w.write_str(s),
                 Item::Numeric(ref spec, pad) => self.format_numeric(w, spec, pad),
                 Item::Fixed(ref spec) => self.format_fixed(w, spec),
@@ -323,7 +298,6 @@ where
     }
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
 impl<'a, I, B, Off> Display for Formatter<I, Off>
 where
     I: Iterator<Item = B> + Clone,
@@ -331,9 +305,17 @@ where
     Off: Offset + Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut result = String::new();
-        self.format(&mut result)?;
-        f.pad(&result)
+        #[cfg(any(feature = "alloc", feature = "std"))]
+        if f.width().is_some() || f.precision().is_some() {
+            // Justify/pad/truncate the formatted result by rendering it to a temporary `String`
+            // first.
+            // We skip this step if there are no 'external' formatting specifiers.
+            // This is the only formatting functionality that is missing without `alloc`.
+            let mut result = String::new();
+            self.format(&mut result)?;
+            return f.pad(&result);
+        }
+        self.format(f)
     }
 }
 
@@ -503,7 +485,6 @@ pub fn format_item_localized(
         .fmt(w)
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
 impl OffsetFormat {
     /// Writes an offset from UTC with the format defined by `self`.
     fn format(&self, w: &mut impl Write, off: FixedOffset) -> fmt::Result {
@@ -585,7 +566,6 @@ impl OffsetFormat {
 
 /// Writes the date, time and offset to the string. same as `%Y-%m-%dT%H:%M:%S%.f%:z`
 #[inline]
-#[cfg(any(feature = "alloc", feature = "std", feature = "serde", feature = "rustc-serialize"))]
 pub(crate) fn write_rfc3339(
     w: &mut impl Write,
     dt: NaiveDateTime,
@@ -658,7 +638,6 @@ pub(crate) fn write_rfc2822(
     write_rfc2822_inner(w, dt.date(), dt.time(), off, default_locale())
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
 /// write datetimes like `Tue, 1 Jul 2003 10:52:37 +0200`, same as `%a, %d %b %Y %H:%M:%S %z`
 fn write_rfc2822_inner(
     w: &mut impl Write,
