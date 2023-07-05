@@ -68,12 +68,15 @@ The following specifiers are available both to formatting and parsing.
 | `%r`  | `12:34:60 AM` | Locale's 12 hour clock time. (e.g., 11:11:04 PM). Falls back to `%X` if the locale does not have a 12 hour clock format. |
 |       |          |                                                                            |
 |       |          | **TIME ZONE SPECIFIERS:**                                                  |
-| `%Z`  | `ACST`   | Local time zone name. Skips all non-whitespace characters during parsing. Identical to `%:z` when formatting. [^8] |
-| `%z`  | `+0930`  | Offset from the local time to UTC (with UTC being `+0000`).                |
-| `%:z` | `+09:30` | Same as `%z` but with a colon.                                             |
-|`%::z`|`+09:30:00`| Offset from the local time to UTC with seconds.                            |
-|`%:::z`| `+09`    | Offset from the local time to UTC without minutes.                         |
-| `%#z` | `+09`    | *Parsing only:* Same as `%z` but allows minutes to be missing or present.  |
+| `%Z`           | `ACST`                   | Local time zone name. Skips all non-whitespace characters during parsing. [^8] |
+| `%z`           | `+0900`| Offset from the local time to UTC. *Formatting:* same as `%.z`. *Parsing:* maximally permissive. |
+| `%:z`, `%.z`   | `+09:00`, `+0900`        | Offset in hours and minutes, with or without a colon.                          |
+| `%:?z`, `%.?z` | `+09(:30)`, `+09(30)`    | Offset in hours and optionally minutes, with or without a colon.               |
+|`%::z`, `%..z` |`+09:00:00`, `+090000`     | Offset in hours, minutes and seconds, with or without a colon.                 |
+|`%::?z`, `%..?z`|`+09:00(:15)`, `+0900(15)`| Offset in hours, minutes and optionally seconds, with or without a colon.      |
+|`%:?:z`, `%.?.z`|`+09(:00:15)`, `+09(0015)`| Offset in hours, and optionally minutes and seconds, with or without a colon.  |
+|`%:::z`         | `+09`                    | Offset in hours only (not recommended, prefer `%:?z` or `%.?z`).               |
+| `%#z`    | `Z` | Offset from the local time to UTC. `+00:00` can be formatted as `Z`. Supports the same modifiers as `%z` (for example `%#:z`). |
 |       |          |                                                                            |
 |       |          | **DATE & TIME SPECIFIERS:**                                                |
 |`%c`|`Sun Jul  8 00:34:60 2001`|Locale's date and time (e.g., Thu Mar  3 23:05:25 2005).       |
@@ -86,8 +89,8 @@ The following specifiers are available both to formatting and parsing.
 | `%n`  |          | Literal newline (`\n`).                                                    |
 | `%%`  |          | Literal percent sign.                                                      |
 
-It is possible to override the default padding behavior of numeric specifiers `%?`.
-This is not allowed for other specifiers and will result in the `BAD_FORMAT` error.
+It is possible to override the default padding behavior of numeric specifiers `%?`, and of the UTC
+offset `%z`. This is not allowed for other specifiers and will result in the `BAD_FORMAT` error.
 
 Modifier | Description
 -------- | -----------
@@ -111,12 +114,12 @@ Notes:
 [^4]: `%S`:
    It accounts for leap seconds, so `60` is possible.
 
-[^5]: `%+`: Same as `%Y-%m-%dT%H:%M:%S%.f%:z`, i.e. 0, 3, 6 or 9 fractional
+[^5]: `%+`: Same as `%Y-%m-%dT%H:%M:%S%.f%#::?z`, i.e. 0, 3, 6 or 9 fractional
    digits for seconds and colons in the time zone offset.
    <br>
    <br>
-   This format also supports having a `Z` or `UTC` in place of `%:z`. They
-   are equivalent to `+00:00`.
+   This format also supports having `UTC` in place of `%#::?z`, which is equivalent
+   to `+00:00`.
    <br>
    <br>
    Note that all `T`, `Z`, and `UTC` are parsed case-insensitively.
@@ -159,7 +162,7 @@ Notes:
 use super::{fixed, internal_fixed, num, num0, nums, offset};
 #[cfg(feature = "unstable-locales")]
 use super::{locales, Locale};
-use super::{Colons, Fixed, InternalInternal, Item, Numeric, OffsetPrecision, Pad};
+use super::{Colons, Fixed, InternalInternal, InternalFixed, Item, Numeric, OffsetPrecision, Pad};
 
 /// Parsing iterator for `strftime`-like format strings.
 #[derive(Clone, Debug)]
@@ -197,8 +200,6 @@ impl<'a> StrftimeItems<'a> {
         StrftimeItems { remainder: s, queue: &[], locale_str: "", locale: Some(locale) }
     }
 }
-
-const HAVE_ALTERNATES: &str = "z";
 
 impl<'a> Iterator for StrftimeItems<'a> {
     type Item = Item<'a>;
@@ -281,17 +282,20 @@ impl<'a> StrftimeItems<'a> {
                 }
 
                 let spec = next!();
-                let pad_override = match spec {
+                let is_alternate = spec == '#';
+                let spec = if is_alternate { next!() } else { spec };
+
+                let mut pad_override = match spec {
                     '-' => Some(Pad::None),
                     '0' => Some(Pad::Zero),
                     '_' => Some(Pad::Space),
                     _ => None,
                 };
-                let is_alternate = spec == '#';
-                let spec = if pad_override.is_some() || is_alternate { next!() } else { spec };
-                if is_alternate && !HAVE_ALTERNATES.contains(spec) {
-                    return Some((remainder, Item::Error));
-                }
+                let spec = if pad_override.is_some() { next!() } else { spec };
+                // FIXME
+                //if is_alternate && !HAVE_ALTERNATES.contains(spec) {
+                //    return Some((remainder, Item::Error));
+                //}
 
                 macro_rules! queue {
                     [$head:expr, $($tail:expr),+ $(,)*] => ({
@@ -384,42 +388,127 @@ impl<'a> StrftimeItems<'a> {
                     'y' => num0(YearMod100),
                     'z' => {
                         if is_alternate {
-                            offset(OffsetPrecision::OptionalMinutes, Colons::Maybe, true, pad_override)
+                            offset(
+                                OffsetPrecision::OptionalMinutes,
+                                Colons::Maybe,
+                                true,
+                                pad_override,
+                            )
                         } else {
                             offset(OffsetPrecision::Minutes, Colons::Maybe, false, pad_override)
                         }
                     }
                     '+' => fixed(Fixed::RFC3339),
                     ':' => {
-                        if remainder.starts_with("::z") {
-                            remainder = &remainder[3..];
-                            offset(OffsetPrecision::Hours, Colons::None, is_alternate, pad_override)
-                        } else if remainder.starts_with(":z") {
-                            remainder = &remainder[2..];
-                            offset(OffsetPrecision::Seconds, Colons::Colon, is_alternate, pad_override)
-                        } else if remainder.starts_with('z') {
-                            remainder = &remainder[1..];
-                            offset(OffsetPrecision::Minutes, Colons::Colon, is_alternate, pad_override)
+                        if let Some(s) = remainder.strip_prefix('z') {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::Minutes,
+                                Colons::Colon,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix("?z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalMinutes,
+                                Colons::Colon,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix(":z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::Seconds,
+                                Colons::Colon,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix(":?z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalSeconds,
+                                Colons::Colon,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix("?:z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalMinutesAndSeconds,
+                                Colons::Colon,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix("::z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::Hours,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
                         } else {
                             Item::Error
                         }
                     }
-                    '.' => match next!() {
-                        '3' => match next!() {
-                            'f' => fixed(Fixed::Nanosecond3),
-                            _ => Item::Error,
-                        },
-                        '6' => match next!() {
-                            'f' => fixed(Fixed::Nanosecond6),
-                            _ => Item::Error,
-                        },
-                        '9' => match next!() {
-                            'f' => fixed(Fixed::Nanosecond9),
-                            _ => Item::Error,
-                        },
-                        'f' => fixed(Fixed::Nanosecond),
-                        _ => Item::Error,
-                    },
+                    '.' => {
+                        if let Some(s) = remainder.strip_prefix("3f") {
+                            remainder = s;
+                            fixed(Fixed::Nanosecond3)
+                        } else if let Some(s) = remainder.strip_prefix("6f") {
+                            remainder = s;
+                            fixed(Fixed::Nanosecond6)
+                        } else if let Some(s) = remainder.strip_prefix("9f") {
+                            remainder = s;
+                            fixed(Fixed::Nanosecond9)
+                        } else if let Some(s) = remainder.strip_prefix('f') {
+                            remainder = s;
+                            fixed(Fixed::Nanosecond)
+                        } else if let Some(s) = remainder.strip_prefix('z') {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::Minutes,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix("?z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalMinutes,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix(".z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::Seconds,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix(".?z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalSeconds,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else if let Some(s) = remainder.strip_prefix("?.z") {
+                            remainder = s;
+                            offset(
+                                OffsetPrecision::OptionalMinutesAndSeconds,
+                                Colons::None,
+                                is_alternate,
+                                pad_override.take(),
+                            )
+                        } else {
+                            Item::Error
+                        }
+                    }
                     '3' => match next!() {
                         'f' => internal_fixed(Nanosecond3NoDot),
                         _ => Item::Error,
@@ -435,6 +524,13 @@ impl<'a> StrftimeItems<'a> {
                     '%' => Literal("%"),
                     _ => Item::Error, // no such specifier
                 };
+
+                if is_alternate {
+                    match item {
+                        Item::Fixed(Fixed::Internal(InternalFixed { val: UtcOffset(_) })) => {},
+                        _ => return Some((remainder, Item::Error)),
+                    }
+                }
 
                 // Adjust `item` if we have any padding modifier.
                 // Not allowed on non-numeric items or on specifiers composed out of multiple
@@ -500,7 +596,7 @@ mod tests {
     #[cfg(feature = "unstable-locales")]
     use crate::format::Locale;
     use crate::format::{num, num0, nums, offset, Colons};
-    use crate::format::{Numeric::*, OffsetPrecision};
+    use crate::format::{Numeric::*, OffsetPrecision, Pad};
     #[cfg(any(feature = "alloc", feature = "std"))]
     use crate::{DateTime, FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
 
@@ -554,9 +650,42 @@ mod tests {
         assert_eq!(parse_and_collect("%-e"), [num(Day)]);
         assert_eq!(parse_and_collect("%0e"), [num0(Day)]);
         assert_eq!(parse_and_collect("%_e"), [nums(Day)]);
+        assert_eq!(
+            parse_and_collect("%z"),
+            [offset(OffsetPrecision::Minutes, Colons::Maybe, false, None)]
+        );
+        assert_eq!(
+            parse_and_collect("%:z"),
+            [offset(OffsetPrecision::Minutes, Colons::Colon, false, None)]
+        );
+        assert_eq!(
+            parse_and_collect("%#z"),
+            [offset(OffsetPrecision::OptionalMinutes, Colons::Maybe, true, None)]
+        );
+
         assert_eq!(parse_and_collect("%z"), [offset(OffsetPrecision::Minutes, Colons::Maybe, false, None)]);
-        assert_eq!(parse_and_collect("%:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, false, None)]);
         assert_eq!(parse_and_collect("%#z"), [offset(OffsetPrecision::OptionalMinutes, Colons::Maybe, true, None)]);
+        assert_eq!(parse_and_collect("%:::z"), [offset(OffsetPrecision::Hours, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%::z"), [offset(OffsetPrecision::Seconds, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%:?z"), [offset(OffsetPrecision::OptionalMinutes, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%:?:z"), [offset(OffsetPrecision::OptionalMinutesAndSeconds, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%::?z"), [offset(OffsetPrecision::OptionalSeconds, Colons::Colon, false, None)]);
+        assert_eq!(parse_and_collect("%-:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, false, Some(Pad::None))]);
+        assert_eq!(parse_and_collect("%_:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, false, Some(Pad::Space))]);
+        assert_eq!(parse_and_collect("%#:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, true, None)]);
+        assert_eq!(parse_and_collect("%#0:z"), [offset(OffsetPrecision::Minutes, Colons::Colon, true, Some(Pad::Zero))]);
+        assert_eq!(parse_and_collect("%.z"), [offset(OffsetPrecision::Minutes, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%..z"), [offset(OffsetPrecision::Seconds, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%.?z"), [offset(OffsetPrecision::OptionalMinutes, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%.?.z"), [offset(OffsetPrecision::OptionalMinutesAndSeconds, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%..?z"), [offset(OffsetPrecision::OptionalSeconds, Colons::None, false, None)]);
+        assert_eq!(parse_and_collect("%-.z"), [offset(OffsetPrecision::Minutes, Colons::None, false, Some(Pad::None))]);
+        assert_eq!(parse_and_collect("%_.z"), [offset(OffsetPrecision::Minutes, Colons::None, false, Some(Pad::Space))]);
+        assert_eq!(parse_and_collect("%#.z"), [offset(OffsetPrecision::Minutes, Colons::None, true, None)]);
+        assert_eq!(parse_and_collect("%#0.z"), [offset(OffsetPrecision::Minutes, Colons::None, true, Some(Pad::Zero))]);
+        //assert_eq!(parse_and_collect("%#0:z"), [Item::Error]);
+
         assert_eq!(parse_and_collect("%#m"), [Item::Error]);
     }
 
