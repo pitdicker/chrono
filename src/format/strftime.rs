@@ -506,60 +506,50 @@ mod tests {
 
     #[test]
     fn test_strftime_items() {
-        fn parse_and_collect(s: &str) -> Vec<Item<'_>> {
-            // map any error into `[Item::Error]`. useful for easy testing.
-            let items = StrftimeItems::new(s);
-            let items = items.map(|spec| if spec == Item::Error { None } else { Some(spec) });
-            items.collect::<Option<Vec<_>>>().unwrap_or_else(|| vec![Item::Error])
+        #[track_caller]
+        fn compare(s: &str, expected: &[Item]) {
+            let fmt_iter = StrftimeItems::new(s);
+            assert!(fmt_iter.eq(expected.iter().cloned()))
         }
 
-        assert_eq!(parse_and_collect(""), []);
-        assert_eq!(parse_and_collect(" \t\n\r "), [Space(" \t\n\r ")]);
-        assert_eq!(parse_and_collect("hello?"), [Literal("hello?")]);
-        assert_eq!(
-            parse_and_collect("a  b\t\nc"),
-            [Literal("a"), Space("  "), Literal("b"), Space("\t\n"), Literal("c")]
+        compare("", &[]);
+        compare(" \t\n\r ", &[Space(" \t\n\r ")]);
+        compare("hello?", &[Literal("hello?")]);
+        compare(
+            "a  b\t\nc",
+            &[Literal("a"), Space("  "), Literal("b"), Space("\t\n"), Literal("c")],
         );
-        assert_eq!(parse_and_collect("100%%"), [Literal("100"), Literal("%")]);
-        assert_eq!(
-            parse_and_collect("100%% ok"),
-            [Literal("100"), Literal("%"), Space(" "), Literal("ok")]
-        );
-        assert_eq!(parse_and_collect("%%PDF-1.0"), [Literal("%"), Literal("PDF-1.0")]);
-        assert_eq!(
-            parse_and_collect("%Y-%m-%d"),
-            [num0(Year), Literal("-"), num0(Month), Literal("-"), num0(Day)]
-        );
-        assert_eq!(parse_and_collect("[%F]"), parse_and_collect("[%Y-%m-%d]"));
-        assert_eq!(parse_and_collect("%m %d"), [num0(Month), Space(" "), num0(Day)]);
-        assert_eq!(parse_and_collect("%"), [Item::Error]);
-        assert_eq!(parse_and_collect("%%"), [Literal("%")]);
-        assert_eq!(parse_and_collect("%%%"), [Item::Error]);
-        assert_eq!(parse_and_collect("%%%%"), [Literal("%"), Literal("%")]);
-        assert_eq!(parse_and_collect("foo%?"), [Item::Error]);
-        assert_eq!(parse_and_collect("bar%42"), [Item::Error]);
-        assert_eq!(parse_and_collect("quux% +"), [Item::Error]);
-        assert_eq!(parse_and_collect("%.Z"), [Item::Error]);
-        assert_eq!(parse_and_collect("%:Z"), [Item::Error]);
-        assert_eq!(parse_and_collect("%-Z"), [Item::Error]);
-        assert_eq!(parse_and_collect("%0Z"), [Item::Error]);
-        assert_eq!(parse_and_collect("%_Z"), [Item::Error]);
-        assert_eq!(parse_and_collect("%.j"), [Item::Error]);
-        assert_eq!(parse_and_collect("%:j"), [Item::Error]);
-        assert_eq!(parse_and_collect("%-j"), [num(Ordinal)]);
-        assert_eq!(parse_and_collect("%0j"), [num0(Ordinal)]);
-        assert_eq!(parse_and_collect("%_j"), [nums(Ordinal)]);
-        assert_eq!(parse_and_collect("%.e"), [Item::Error]);
-        assert_eq!(parse_and_collect("%:e"), [Item::Error]);
-        assert_eq!(parse_and_collect("%-e"), [num(Day)]);
-        assert_eq!(parse_and_collect("%0e"), [num0(Day)]);
-        assert_eq!(parse_and_collect("%_e"), [nums(Day)]);
-        assert_eq!(parse_and_collect("%z"), [fixed(Fixed::TimezoneOffset)]);
-        assert_eq!(
-            parse_and_collect("%#z"),
-            [internal_fixed(InternalInternal::TimezoneOffsetPermissive)]
-        );
-        assert_eq!(parse_and_collect("%#m"), [Item::Error]);
+        compare("100%%", &[Literal("100"), Literal("%")]);
+        compare("100%% ok", &[Literal("100"), Literal("%"), Space(" "), Literal("ok")]);
+        compare("%%PDF-1.0", &[Literal("%"), Literal("PDF-1.0")]);
+        compare("%Y-%m-%d", &[num0(Year), Literal("-"), num0(Month), Literal("-"), num0(Day)]);
+        //compare("[%F]", &parse_and_collect("[%Y-%m-%d]"));
+        compare("%m %d", &[num0(Month), Space(" "), num0(Day)]);
+        compare("%", &[Item::Error]);
+        compare("%%", &[Literal("%")]);
+        compare("%%%", &[Literal("%"), Item::Error]);
+        compare("%%%%", &[Literal("%"), Literal("%")]);
+        compare("foo%?", &[Literal("foo"), Item::Error]);
+        compare("bar%42", &[Literal("bar"), Item::Error, Literal("2")]);
+        compare("quux% +", &[Literal("quux"), Item::Error, Literal("+")]);
+        compare("%.Z", &[Item::Error]);
+        compare("%:Z", &[Item::Error, Literal("Z")]);
+        compare("%-Z", &[Item::Error]);
+        compare("%0Z", &[Item::Error]);
+        compare("%_Z", &[Item::Error]);
+        compare("%.j", &[Item::Error]);
+        compare("%:j", &[Item::Error, Literal("j")]);
+        compare("%-j", &[num(Ordinal)]);
+        compare("%0j", &[num0(Ordinal)]);
+        compare("%_j", &[nums(Ordinal)]);
+        compare("%.e", &[Item::Error]);
+        compare("%:e", &[Item::Error, Literal("e")]);
+        compare("%-e", &[num(Day)]);
+        compare("%0e", &[num0(Day)]);
+        compare("%_e", &[nums(Day)]);
+        compare("%z", &[fixed(Fixed::TimezoneOffset)]);
+        compare("%#z", &[internal_fixed(InternalInternal::TimezoneOffsetPermissive)]);
+        compare("%#m", &[Item::Error]);
     }
 
     #[test]
