@@ -172,7 +172,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[allow(deprecated)]
     #[must_use]
     pub fn date(&self) -> Date<Tz> {
-        Date::from_utc(self.naive_local().date(), self.offset.clone())
+        Date::from_utc(self.naive().date(), self.offset.clone())
     }
 
     /// Retrieves the date component.
@@ -195,7 +195,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[inline]
     #[must_use]
     pub fn date_naive(&self) -> NaiveDate {
-        let local = self.naive_local();
+        let local = self.naive();
         NaiveDate::from_ymd_opt(local.year(), local.month(), local.day()).unwrap()
     }
 
@@ -364,7 +364,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     ///   daylight saving time transition.
     #[must_use]
     pub fn checked_add_months(self, rhs: Months) -> Option<DateTime<Tz>> {
-        self.naive_local()
+        self.naive()
             .checked_add_months(rhs)?
             .and_local_timezone(Tz::from_offset(&self.offset))
             .single()
@@ -397,7 +397,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     ///   daylight saving time transition.
     #[must_use]
     pub fn checked_sub_months(self, rhs: Months) -> Option<DateTime<Tz>> {
-        self.naive_local()
+        self.naive()
             .checked_sub_months(rhs)?
             .and_local_timezone(Tz::from_offset(&self.offset))
             .single()
@@ -413,7 +413,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     ///   daylight saving time transition.
     #[must_use]
     pub fn checked_add_days(self, days: Days) -> Option<Self> {
-        self.naive_local()
+        self.naive()
             .checked_add_days(days)?
             .and_local_timezone(TimeZone::from_offset(&self.offset))
             .single()
@@ -429,7 +429,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     ///   daylight saving time transition.
     #[must_use]
     pub fn checked_sub_days(self, days: Days) -> Option<Self> {
-        self.naive_local()
+        self.naive()
             .checked_sub_days(days)?
             .and_local_timezone(TimeZone::from_offset(&self.offset))
             .single()
@@ -446,14 +446,8 @@ impl<Tz: TimeZone> DateTime<Tz> {
         self.datetime.signed_duration_since(rhs.borrow().datetime)
     }
 
-    /// Returns a view to the naive UTC datetime.
-    #[inline]
-    #[must_use]
-    pub fn naive_utc(&self) -> NaiveDateTime {
-        self.datetime
-    }
-
-    /// Returns a view to the naive local datetime.
+    /// Strips this `DateTime<Tz>` of its timezone information, returning a `NaiveDateTime` in the
+    /// local time of that timezone.
     ///
     /// # Panics
     ///
@@ -462,6 +456,28 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// representable range of a [`NaiveDateTime`].
     #[inline]
     #[must_use]
+    pub fn naive(&self) -> NaiveDateTime {
+        self.datetime + self.offset.fix()
+    }
+
+    /// Strips this `DateTime<Tz>` of its timezone information, returning a `NaiveDateTime` in UTC.
+    #[inline]
+    #[must_use]
+    pub fn naive_utc(&self) -> NaiveDateTime {
+        self.datetime
+    }
+
+    /// Strips this `DateTime<Tz>` of its timezone information, returning a `NaiveDateTime` in the
+    /// local time of that timezone.
+    ///
+    /// # Panics
+    ///
+    /// [`DateTime`] internally stores the date and time in UTC with a [`NaiveDateTime`]. This
+    /// method will panic if the offset from UTC would push the local datetime outside of the
+    /// representable range of a [`NaiveDateTime`].
+    #[inline]
+    #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use DateTime::naive() instead")]
     pub fn naive_local(&self) -> NaiveDateTime {
         self.datetime + self.offset.fix()
     }
@@ -499,7 +515,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[must_use]
     pub fn to_rfc2822(&self) -> String {
         let mut result = String::with_capacity(32);
-        crate::format::write_rfc2822(&mut result, self.naive_local(), self.offset.fix())
+        crate::format::write_rfc2822(&mut result, self.naive(), self.offset.fix())
             .expect("writing rfc2822 datetime to string should never fail");
         result
     }
@@ -510,7 +526,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[must_use]
     pub fn to_rfc3339(&self) -> String {
         let mut result = String::with_capacity(32);
-        crate::format::write_rfc3339(&mut result, self.naive_local(), self.offset.fix())
+        crate::format::write_rfc3339(&mut result, self.naive(), self.offset.fix())
             .expect("writing rfc3339 datetime to string should never fail");
         result
     }
@@ -688,7 +704,7 @@ fn map_local<Tz: TimeZone, F>(dt: &DateTime<Tz>, mut f: F) -> Option<DateTime<Tz
 where
     F: FnMut(NaiveDateTime) -> Option<NaiveDateTime>,
 {
-    f(dt.naive_local()).and_then(|datetime| dt.timezone().from_local_datetime(&datetime).single())
+    f(dt.naive()).and_then(|datetime| dt.timezone().from_local_datetime(&datetime).single())
 }
 
 impl DateTime<FixedOffset> {
@@ -808,7 +824,7 @@ where
         I: Iterator<Item = B> + Clone,
         B: Borrow<Item<'a>>,
     {
-        let local = self.naive_local();
+        let local = self.naive();
         DelayedFormat::new_with_offset(Some(local.date()), Some(local.time()), &self.offset, items)
     }
 
@@ -846,7 +862,7 @@ where
         I: Iterator<Item = B> + Clone,
         B: Borrow<Item<'a>>,
     {
-        let local = self.naive_local();
+        let local = self.naive();
         DelayedFormat::new_with_offset_and_locale(
             Some(local.date()),
             Some(local.time()),
@@ -877,39 +893,39 @@ where
 impl<Tz: TimeZone> Datelike for DateTime<Tz> {
     #[inline]
     fn year(&self) -> i32 {
-        self.naive_local().year()
+        self.naive().year()
     }
     #[inline]
     fn month(&self) -> u32 {
-        self.naive_local().month()
+        self.naive().month()
     }
     #[inline]
     fn month0(&self) -> u32 {
-        self.naive_local().month0()
+        self.naive().month0()
     }
     #[inline]
     fn day(&self) -> u32 {
-        self.naive_local().day()
+        self.naive().day()
     }
     #[inline]
     fn day0(&self) -> u32 {
-        self.naive_local().day0()
+        self.naive().day0()
     }
     #[inline]
     fn ordinal(&self) -> u32 {
-        self.naive_local().ordinal()
+        self.naive().ordinal()
     }
     #[inline]
     fn ordinal0(&self) -> u32 {
-        self.naive_local().ordinal0()
+        self.naive().ordinal0()
     }
     #[inline]
     fn weekday(&self) -> Weekday {
-        self.naive_local().weekday()
+        self.naive().weekday()
     }
     #[inline]
     fn iso_week(&self) -> IsoWeek {
-        self.naive_local().iso_week()
+        self.naive().iso_week()
     }
 
     #[inline]
@@ -1028,19 +1044,19 @@ impl<Tz: TimeZone> Datelike for DateTime<Tz> {
 impl<Tz: TimeZone> Timelike for DateTime<Tz> {
     #[inline]
     fn hour(&self) -> u32 {
-        self.naive_local().hour()
+        self.naive().hour()
     }
     #[inline]
     fn minute(&self) -> u32 {
-        self.naive_local().minute()
+        self.naive().minute()
     }
     #[inline]
     fn second(&self) -> u32 {
-        self.naive_local().second()
+        self.naive().second()
     }
     #[inline]
     fn nanosecond(&self) -> u32 {
-        self.naive_local().nanosecond()
+        self.naive().nanosecond()
     }
 
     /// Makes a new `DateTime` with the hour number changed.
@@ -1242,7 +1258,7 @@ impl<Tz: TimeZone> Sub<Days> for DateTime<Tz> {
 
 impl<Tz: TimeZone> fmt::Debug for DateTime<Tz> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.naive_local().fmt(f)?;
+        self.naive().fmt(f)?;
         self.offset.fmt(f)
     }
 }
@@ -1252,7 +1268,7 @@ where
     Tz::Offset: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.naive_local().fmt(f)?;
+        self.naive().fmt(f)?;
         f.write_char(' ')?;
         self.offset.fmt(f)
     }
