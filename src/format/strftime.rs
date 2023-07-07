@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(any(feature = "alloc", feature = "std"))] // formatting requires allocations
     fn test_strftime_docs() {
         let dt = FixedOffset::east_opt(34200)
             .unwrap()
@@ -661,6 +661,7 @@ mod tests {
     }
 
     #[test]
+    // formatting requires allocations
     #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     fn test_strftime_docs_localized() {
         let dt = FixedOffset::east_opt(34200)
@@ -734,6 +735,7 @@ mod tests {
     }
 
     #[test]
+    // formatting requires allocations
     #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     fn test_strftime_localized_korean() {
         let dt = FixedOffset::east_opt(34200)
@@ -763,7 +765,7 @@ mod tests {
     }
 
     #[test]
-     // formatting requires allocations
+    // formatting requires allocations
     #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     fn test_strftime_localized_japanese() {
         let dt = FixedOffset::east_opt(34200)
