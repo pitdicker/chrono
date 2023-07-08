@@ -10,6 +10,7 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 use core::borrow::Borrow;
 use core::fmt::{self, Display, Write};
+use core::marker::PhantomData;
 
 use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::offset::{FixedOffset, Offset};
@@ -22,7 +23,17 @@ use super::{
 };
 use locales::*;
 
+/// TODO
+#[derive(Clone, Debug)]
+pub struct FormattingSpec<I, T> {
+    pub(crate) items: I,
+    pub(crate) date_time_type: PhantomData<T>,
+    #[allow(dead_code)]
+    pub(crate) locale: Locale,
+}
+
 /// A *temporary* object which can be used as an argument to [`format!`] or others.
+/// This is normally constructed via the `format_with` methods of each date and time type.
 #[derive(Debug)]
 pub struct Formatter<I, Off> {
     /// The date view, if any.
