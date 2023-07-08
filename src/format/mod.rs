@@ -60,7 +60,6 @@ pub(crate) use formatting::write_rfc2822;
     feature = "rustc-serialize"
 ))]
 pub(crate) use formatting::write_rfc3339;
-pub use formatting::Formatter;
 #[allow(deprecated)]
 #[cfg(any(feature = "alloc", feature = "std"))]
 #[allow(deprecated)]
@@ -68,6 +67,7 @@ pub use formatting::{format, format_item, DelayedFormat};
 #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 #[allow(deprecated)]
 pub use formatting::{format_item_localized, format_localized};
+pub use formatting::{Formatter, FormattingSpec};
 #[cfg(feature = "unstable-locales")]
 pub use locales::Locale;
 #[cfg(not(feature = "unstable-locales"))]
