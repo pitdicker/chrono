@@ -12,9 +12,9 @@ use core::borrow::Borrow;
 use core::fmt::{self, Display, Write};
 use core::marker::PhantomData;
 
-use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::offset::{FixedOffset, Offset};
-use crate::{Datelike, SecondsFormat, Timelike, Weekday};
+use crate::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use crate::{Datelike, ParseError, SecondsFormat, Timelike, Weekday};
 
 use super::locales;
 use super::{
@@ -30,6 +30,21 @@ pub struct FormattingSpec<I, T> {
     pub(crate) date_time_type: PhantomData<T>,
     #[allow(dead_code)]
     pub(crate) locale: Locale,
+}
+
+impl<'a> FormattingSpec<&'a [Item<'a>], DateTime<Utc>> {
+    /// TODO
+    pub const fn from_slice(items: &'a [Item<'a>]) -> Result<Self, ParseError> {
+        let locale = locales::default_locale();
+        let mut i = 0;
+        while i < items.len() {
+            if let Err(e) = items[i].check_fields(true, true, true, locale) {
+                return Err(e);
+            }
+            i += 1;
+        }
+        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+    }
 }
 
 /// A *temporary* object which can be used as an argument to [`format!`] or others.
