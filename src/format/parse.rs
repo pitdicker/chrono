@@ -562,6 +562,7 @@ impl str::FromStr for DateTime<FixedOffset> {
 #[cfg(test)]
 mod tests {
     use crate::format::*;
+    use crate::utils::assert_display_eq;
     use crate::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 
     macro_rules! parsed {
@@ -1664,8 +1665,8 @@ mod tests {
         let dt = Utc.with_ymd_and_hms(1994, 11, 6, 8, 49, 37).unwrap();
 
         // Check that the format is what we expect
-        #[cfg(any(feature = "alloc", feature = "std"))]
-        assert_eq!(dt.format(RFC850_FMT).to_string(), "Sunday, 06-Nov-94 08:49:37 GMT");
+        let formatter = DateTime::formatter(StrftimeItems::new(RFC850_FMT)).unwrap();
+        assert_display_eq(dt.format_with(&formatter), "Sunday, 06-Nov-94 08:49:37 GMT");
 
         // Check that it parses correctly
         assert_eq!(Ok(dt), Utc.datetime_from_str("Sunday, 06-Nov-94 08:49:37 GMT", RFC850_FMT));

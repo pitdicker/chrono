@@ -1,13 +1,12 @@
 use super::DateTime;
+use crate::format::StrftimeItems;
 use crate::naive::{NaiveDate, NaiveTime};
 use crate::offset::{FixedOffset, TimeZone, Utc};
 #[cfg(feature = "clock")]
 use crate::offset::{Local, Offset};
 use crate::oldtime::Duration;
-use crate::utils::{assert_debug_eq, assert_display_eq};
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::Timelike;
-use crate::{Datelike, Days, LocalResult, Months, NaiveDateTime};
+use crate::utils::{assert_debug_eq, assert_display_eq, WriteCompare};
+use crate::{Datelike, Days, LocalResult, Months, NaiveDateTime, Timelike};
 
 #[derive(Clone)]
 struct DstTester;
@@ -630,7 +629,7 @@ fn test_to_string_round_trip_with_local() {
 fn test_datetime_format_with_local() {
     // if we are not around the year boundary, local and UTC date should have the same year
     let dt = Local::now().with_month(5).unwrap();
-    assert_eq!(dt.format("%Y").to_string(), dt.with_timezone(&Utc).format("%Y").to_string());
+    assert_eq!(dt.format_to_string("%Y"), dt.with_timezone(&Utc).format_to_string("%Y"));
 }
 
 #[test]
@@ -731,38 +730,44 @@ fn test_from_system_time() {
 }
 
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))]
 fn test_datetime_format_alignment() {
+    use core::fmt::Write;
+
     let datetime =
         Utc.with_ymd_and_hms(2007, 1, 2, 12, 34, 56).unwrap().with_nanosecond(123456789).unwrap();
 
-    // Item::Literal, odd number of padding bytes.
-    let percent = datetime.format("%%");
-    assert_eq!("   %", format!("{:>4}", percent));
-    assert_eq!("%   ", format!("{:<4}", percent));
-    assert_eq!(" %  ", format!("{:^4}", percent));
+    // Item::Literal
+    let formatter = DateTime::formatter(StrftimeItems::new("%%")).unwrap();
+    let percent = datetime.format_with(&formatter);
+    write!(&mut WriteCompare::new("   %"), "{:>4}", percent).unwrap();
+    write!(&mut WriteCompare::new("%   "), "{:<4}", percent).unwrap();
+    write!(&mut WriteCompare::new(" %  "), "{:^4}", percent).unwrap();
 
-    // Item::Numeric, custom non-ASCII padding character
-    let year = datetime.format("%Y");
-    assert_eq!("——2007", format!("{:—>6}", year));
-    assert_eq!("2007——", format!("{:—<6}", year));
-    assert_eq!("—2007—", format!("{:—^6}", year));
+    // Item::Numeric
+    let formatter = DateTime::formatter(StrftimeItems::new("%Y")).unwrap();
+    let year = datetime.format_with(&formatter);
+    write!(&mut WriteCompare::new("——2007"), "{:—>6}", year).unwrap();
+    write!(&mut WriteCompare::new("2007——"), "{:—<6}", year).unwrap();
+    write!(&mut WriteCompare::new("—2007—"), "{:—^6}", year).unwrap();
 
     // Item::Fixed
-    let tz = datetime.format("%Z");
-    assert_eq!("  UTC", format!("{:>5}", tz));
-    assert_eq!("UTC  ", format!("{:<5}", tz));
-    assert_eq!(" UTC ", format!("{:^5}", tz));
+    let formatter = DateTime::formatter(StrftimeItems::new("%Z")).unwrap();
+    let tz = datetime.format_with(&formatter);
+    write!(&mut WriteCompare::new("  UTC"), "{:>5}", tz).unwrap();
+    write!(&mut WriteCompare::new("UTC  "), "{:<5}", tz).unwrap();
+    write!(&mut WriteCompare::new(" UTC "), "{:^5}", tz).unwrap();
 
     // [Item::Numeric, Item::Space, Item::Literal, Item::Space, Item::Numeric]
-    let ymd = datetime.format("%Y %B %d");
-    assert_eq!("  2007 January 02", format!("{:>17}", ymd));
-    assert_eq!("2007 January 02  ", format!("{:<17}", ymd));
-    assert_eq!(" 2007 January 02 ", format!("{:^17}", ymd));
+    let formatter = DateTime::formatter(StrftimeItems::new("%Y %B %d")).unwrap();
+    let ymd = datetime.format_with(&formatter);
+    write!(&mut WriteCompare::new("  2007 January 02"), "{:>17}", ymd).unwrap();
+    write!(&mut WriteCompare::new("2007 January 02  "), "{:<17}", ymd).unwrap();
+    write!(&mut WriteCompare::new(" 2007 January 02 "), "{:^17}", ymd).unwrap();
 
     // Truncated
-    let time = datetime.format("%T%.6f");
-    assert_eq!("12:34:56.1234", format!("{:.13}", time));
+    let formatter = DateTime::formatter(StrftimeItems::new("%T%.6f")).unwrap();
+    let time = datetime.format_with(&formatter);
+    write!(&mut WriteCompare::new("12:34:56.1234"), "{:.13}", time).unwrap();
 }
 
 #[test]

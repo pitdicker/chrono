@@ -161,6 +161,7 @@ fn bench_parse_strftime_localized(c: &mut Criterion) {
     });
 }
 
+#[allow(deprecated)]
 fn bench_format(c: &mut Criterion) {
     let dt = Local::now();
     c.bench_function("bench_format", |b| {
@@ -168,6 +169,7 @@ fn bench_format(c: &mut Criterion) {
     });
 }
 
+#[allow(deprecated)]
 fn bench_format_with_items(c: &mut Criterion) {
     let dt = Local::now();
     let items: Vec<_> = StrftimeItems::new("%Y-%m-%dT%H:%M:%S%.f%:z").collect();
