@@ -162,6 +162,11 @@ use super::{locales, Locale};
 use super::{Fixed, InternalInternal, Item, Numeric, Pad};
 
 /// Parsing iterator for `strftime`-like format strings.
+///
+/// If formatting or parsing date and time values is not performance-critical, the methods
+/// [`format`](crate::DateTime::format) and [`parse_from_str`](crate::DateTime::parse_from_str) on
+/// types such as [`DateTime`](crate::DateTime) are easier to use.
+/// `StrftimeItems` is more low-level.
 #[derive(Clone, Debug)]
 pub struct StrftimeItems<'a> {
     /// Remaining portion of the string.
@@ -176,7 +181,31 @@ pub struct StrftimeItems<'a> {
 }
 
 impl<'a> StrftimeItems<'a> {
-    /// Creates a new parsing iterator from the `strftime`-like format string.
+    /// Creates a new parsing iterator from a `strftime`-like format string.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// While iterating [`Item::Error`] will be returned if the format string contains an invalid
+    /// or unrecognised formatting specifier.
+    ///
+    /// # Example
+    ///
+    #[cfg_attr(not(any(feature = "alloc", feature = "std")), doc = "```ignore")]
+    #[cfg_attr(any(feature = "alloc", feature = "std"), doc = "```rust")]
+    /// use chrono::format::StrftimeItems;
+    /// use chrono::NaiveDate;
+    ///
+    /// let fmt_items_iter = StrftimeItems::new("%e %b %Y %k.%M");
+    /// let datetime = NaiveDate::from_ymd_opt(2023, 7, 11).unwrap().and_hms_opt(9, 0, 0).unwrap();
+    ///
+    /// // The format string will be parsed while `datetime` is formatted.
+    /// let formatter = datetime.format_with_items(fmt_items_iter);
+    /// assert_eq!(formatter.to_string(), "11 Jul 2023  9.00");
+    /// # Ok::<(), chrono::ParseError>(())
+    /// ```
     #[must_use]
     pub const fn new(s: &'a str) -> StrftimeItems<'a> {
         #[cfg(not(feature = "unstable-locales"))]
