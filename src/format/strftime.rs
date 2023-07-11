@@ -328,6 +328,46 @@ impl<'a> StrftimeItems<'a> {
         }
         Ok(result)
     }
+
+    /// Parse format string into a `Vec` of [`Item`]'s that contain no references to slices of the
+    /// format string.
+    ///
+    /// This can help with lifetime problems if the format string is not `'static`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string contains an invalid or unrecognised formatting
+    /// specifier.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chrono::format::{Item, ParseError, StrftimeItems};
+    /// use chrono::NaiveDate;
+    ///
+    /// fn format_items(date_fmt: &str, time_fmt: &str) -> Result<Vec<Item<'static>>, ParseError> {
+    ///     // `fmt_string` is dropped at the end of this function.
+    ///     let fmt_string = format!("{} {}", date_fmt, time_fmt);
+    ///     StrftimeItems::new(&fmt_string).parse_to_owned()
+    /// }
+    ///
+    /// let fmt_items = format_items("%e %b %Y", "%k.%M")?;
+    /// let datetime = NaiveDate::from_ymd_opt(2023, 7, 11).unwrap().and_hms_opt(9, 0, 0).unwrap();
+    ///
+    /// assert_eq!(
+    ///     datetime.format_with_items(fmt_items.as_slice().iter()).to_string(),
+    ///     "11 Jul 2023  9.00"
+    /// );
+    /// # Ok::<(), ParseError>(())
+    /// ```
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    pub fn parse_to_owned(self) -> Result<Vec<Item<'static>>, ParseError> {
+        let result: Vec<_> = self.map(|i| i.to_owned()).collect();
+        if result.iter().any(|i| i == &Item::Error) {
+            return Err(BAD_FORMAT);
+        }
+        Ok(result)
+    }
 }
 
 const HAVE_ALTERNATES: &str = "z";
