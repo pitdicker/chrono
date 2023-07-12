@@ -487,8 +487,7 @@ pub fn format_item(
 
 /// Tries to format given arguments with given formatting items.
 /// Internally used by `DelayedFormat`.
-#[cfg(feature = "unstable-locales")]
-#[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 #[deprecated(since = "0.4.32")]
 pub fn format_localized<'a, I, B>(
     w: &mut fmt::Formatter,
@@ -507,8 +506,7 @@ where
 }
 
 /// Formats single formatting item
-#[cfg(feature = "unstable-locales")]
-#[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 #[deprecated(since = "0.4.32")]
 pub fn format_item_localized(
     w: &mut fmt::Formatter,

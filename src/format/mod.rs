@@ -65,7 +65,7 @@ pub use formatting::Formatter;
 #[cfg(any(feature = "alloc", feature = "std"))]
 #[allow(deprecated)]
 pub use formatting::{format, format_item, DelayedFormat};
-#[cfg(feature = "unstable-locales")]
+#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 #[allow(deprecated)]
 pub use formatting::{format_item_localized, format_localized};
 #[cfg(feature = "unstable-locales")]
