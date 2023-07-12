@@ -7,14 +7,12 @@
 extern crate alloc;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::fmt::Write;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, hash, str};
-#[cfg(feature = "std")]
-use std::string::ToString;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -509,9 +507,15 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[must_use]
     pub fn to_rfc3339(&self) -> String {
-        let mut result = String::with_capacity(32);
-        crate::format::write_rfc3339(&mut result, self.naive_local(), self.offset.fix())
-            .expect("writing rfc3339 datetime to string should never fail");
+        let mut result = String::with_capacity(28);
+        crate::format::write_rfc3339(
+            &mut result,
+            self.naive_local(),
+            self.offset.fix(),
+            SecondsFormat::AutoSi,
+            false,
+        )
+        .expect("writing rfc3339 datetime to string should never fail");
         result
     }
 
@@ -543,46 +547,16 @@ impl<Tz: TimeZone> DateTime<Tz> {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[must_use]
     pub fn to_rfc3339_opts(&self, secform: SecondsFormat, use_z: bool) -> String {
-        use crate::format::Numeric::*;
-        use crate::format::Pad::Zero;
-        use crate::SecondsFormat::*;
-
-        debug_assert!(secform != __NonExhaustive, "Do not use __NonExhaustive!");
-
-        const PREFIX: &[Item<'static>] = &[
-            Item::Numeric(Year, Zero),
-            Item::Literal("-"),
-            Item::Numeric(Month, Zero),
-            Item::Literal("-"),
-            Item::Numeric(Day, Zero),
-            Item::Literal("T"),
-            Item::Numeric(Hour, Zero),
-            Item::Literal(":"),
-            Item::Numeric(Minute, Zero),
-            Item::Literal(":"),
-            Item::Numeric(Second, Zero),
-        ];
-
-        let ssitem = match secform {
-            Secs => None,
-            Millis => Some(Item::Fixed(Fixed::Nanosecond3)),
-            Micros => Some(Item::Fixed(Fixed::Nanosecond6)),
-            Nanos => Some(Item::Fixed(Fixed::Nanosecond9)),
-            AutoSi => Some(Item::Fixed(Fixed::Nanosecond)),
-            __NonExhaustive => unreachable!(),
-        };
-
-        let tzitem = Item::Fixed(if use_z {
-            Fixed::TimezoneOffsetColonZ
-        } else {
-            Fixed::TimezoneOffsetColon
-        });
-
-        let dt = self.fixed_offset();
-        match ssitem {
-            None => dt.format_with_items(PREFIX.iter().chain([tzitem].iter())).to_string(),
-            Some(s) => dt.format_with_items(PREFIX.iter().chain([s, tzitem].iter())).to_string(),
-        }
+        let mut result = String::with_capacity(38);
+        crate::format::write_rfc3339(
+            &mut result,
+            self.naive_local(),
+            self.offset.fix(),
+            secform,
+            use_z,
+        )
+        .expect("writing rfc3339 datetime to string should never fail");
+        result
     }
 
     /// The minimum possible `DateTime<Utc>`.

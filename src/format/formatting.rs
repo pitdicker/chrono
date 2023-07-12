@@ -13,7 +13,7 @@ use core::fmt::{self, Display, Write};
 
 use crate::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::offset::{FixedOffset, Offset};
-use crate::{Datelike, Timelike, Weekday};
+use crate::{Datelike, SecondsFormat, Timelike, Weekday};
 
 use super::locales;
 use super::{
@@ -326,9 +326,13 @@ where
             (RFC2822, Some(d), Some(t), Some(off)) => {
                 write_rfc2822_inner(w, d, t, off.fix(), self.locale)
             }
-            (RFC3339, Some(d), Some(t), Some(off)) => {
-                write_rfc3339(w, crate::NaiveDateTime::new(d, t), off.fix())
-            }
+            (RFC3339, Some(d), Some(t), Some(off)) => write_rfc3339(
+                w,
+                crate::NaiveDateTime::new(d, t),
+                off.fix(),
+                SecondsFormat::AutoSi,
+                false,
+            ),
             _ => Err(fmt::Error), // insufficient arguments for given format
         }
     }
@@ -593,10 +597,13 @@ impl OffsetFormat {
 }
 
 /// Writes the date, time and offset to the string. same as `%Y-%m-%dT%H:%M:%S%.f%:z`
+#[inline]
 pub(crate) fn write_rfc3339(
     w: &mut impl Write,
     dt: NaiveDateTime,
     off: FixedOffset,
+    secform: SecondsFormat,
+    use_z: bool,
 ) -> fmt::Result {
     let year = dt.date().year();
     if (0..=9999).contains(&year) {
@@ -626,19 +633,28 @@ pub(crate) fn write_rfc3339(
     let sec = sec;
     write_hundreds(w, sec as u8)?;
 
-    if nano == 0 {
-    } else if nano % 1_000_000 == 0 {
-        write!(w, ".{:03}", nano / 1_000_000)?;
-    } else if nano % 1_000 == 0 {
-        write!(w, ".{:06}", nano / 1_000)?;
-    } else {
-        write!(w, ".{:09}", nano)?;
-    }
+    match secform {
+        SecondsFormat::Secs => {}
+        SecondsFormat::Millis => write!(w, ".{:03}", nano / 1_000_000)?,
+        SecondsFormat::Micros => write!(w, ".{:06}", nano / 1000)?,
+        SecondsFormat::Nanos => write!(w, ".{:09}", nano)?,
+        SecondsFormat::AutoSi => {
+            if nano == 0 {
+            } else if nano % 1_000_000 == 0 {
+                write!(w, ".{:03}", nano / 1_000_000)?
+            } else if nano % 1_000 == 0 {
+                write!(w, ".{:06}", nano / 1_000)?
+            } else {
+                write!(w, ".{:09}", nano)?
+            }
+        }
+        SecondsFormat::__NonExhaustive => unreachable!(),
+    };
 
     OffsetFormat {
         precision: OffsetPrecision::Minutes,
         colons: Colons::Colon,
-        allow_zulu: false,
+        allow_zulu: use_z,
         padding: Pad::Zero,
     }
     .format(w, off)
