@@ -11,13 +11,11 @@ use alloc::string::String;
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::fmt::Write;
-use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, hash, str};
 #[cfg(feature = "std")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::format::locales;
 #[cfg(feature = "unstable-locales")]
 use crate::format::Locale;
 use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
@@ -930,18 +928,12 @@ impl DateTime<Utc> {
         J: Iterator<Item = B> + Clone,
         B: Borrow<Item<'a>>,
     {
-        let items = items.into_iter();
-        let locale = locales::default_locale();
-        for item in items.clone() {
-            item.borrow().check_fields(true, true, true, locale)?
-        }
-        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+        FormattingSpec::from(items)
     }
 
     /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s,
     /// localized for `locale`.
     #[cfg(feature = "unstable-locales")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
     pub fn formatter_localized<'a, I, J, B>(
         items: I,
         locale: Locale,
@@ -951,11 +943,7 @@ impl DateTime<Utc> {
         J: Iterator<Item = B> + Clone,
         B: Borrow<Item<'a>>,
     {
-        let items = items.into_iter();
-        for item in items.clone() {
-            item.borrow().check_fields(true, true, true, locale)?
-        }
-        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+        FormattingSpec::localized_from(items, locale)
     }
 }
 
