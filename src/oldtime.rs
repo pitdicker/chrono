@@ -11,9 +11,10 @@
 //! Temporal quantification
 
 use core::ops::{Add, Div, Mul, Neg, Sub};
+#[cfg(feature = "std")]
 use core::time::Duration as StdDuration;
 use core::{fmt, i64};
-#[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 use std::error::Error;
 
 #[cfg(feature = "rkyv")]
@@ -291,6 +292,7 @@ impl Duration {
     ///
     /// This function errors when original duration is larger than the maximum
     /// value supported for this type.
+    #[cfg(feature = "std")]
     pub fn from_std(duration: StdDuration) -> Result<Duration, OutOfRangeError> {
         // We need to check secs as u64 before coercing to i64
         if duration.as_secs() > MAX.secs as u64 {
@@ -307,6 +309,7 @@ impl Duration {
     ///
     /// This function errors when duration is less than zero. As standard
     /// library implementation is limited to non-negative values.
+    #[cfg(feature = "std")]
     pub fn to_std(&self) -> Result<StdDuration, OutOfRangeError> {
         if self.secs < 0 {
             return Err(OutOfRangeError(()));
@@ -388,17 +391,13 @@ impl Div<i32> for Duration {
     }
 }
 
-#[cfg(any(feature = "std", test))]
-#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-impl<'a> std::iter::Sum<&'a Duration> for Duration {
+impl<'a> core::iter::Sum<&'a Duration> for Duration {
     fn sum<I: Iterator<Item = &'a Duration>>(iter: I) -> Duration {
         iter.fold(Duration::zero(), |acc, x| acc + *x)
     }
 }
 
-#[cfg(any(feature = "std", test))]
-#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-impl std::iter::Sum<Duration> for Duration {
+impl core::iter::Sum<Duration> for Duration {
     fn sum<I: Iterator<Item = Duration>>(iter: I) -> Duration {
         iter.fold(Duration::zero(), |acc, x| acc + x)
     }
@@ -444,16 +443,18 @@ impl fmt::Display for Duration {
 /// The `std::time::Duration` supports a range from zero to `u64::MAX`
 /// *seconds*, while this module supports signed range of up to
 /// `i64::MAX` of *milliseconds*.
+#[cfg(feature = "std")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutOfRangeError(());
 
+#[cfg(feature = "std")]
 impl fmt::Display for OutOfRangeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Source duration value is out of range for the target type")
     }
 }
 
-#[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl Error for OutOfRangeError {
     #[allow(deprecated)]
@@ -487,9 +488,14 @@ impl arbitrary::Arbitrary<'_> for Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{Duration, OutOfRangeError, MAX, MIN};
+    #[cfg(feature = "std")]
+    use super::OutOfRangeError;
+    use super::{Duration, MAX, MIN};
+    use crate::utils::{assert_display_eq, WriteCompare};
+    #[cfg(feature = "std")]
     use std::time::Duration as StdDuration;
-    use std::{i32, i64};
+
+    use core::fmt::Write;
 
     #[test]
     fn test_duration() {
@@ -682,37 +688,32 @@ mod tests {
         let sum_2: Duration = duration_list_2.iter().sum();
         assert_eq!(sum_2, Duration::seconds(17));
 
-        let duration_vec = vec![
-            Duration::zero(),
-            Duration::seconds(1),
-            Duration::seconds(6),
-            Duration::seconds(10),
-        ];
-        let sum_3: Duration = duration_vec.into_iter().sum();
+        let duration_arr =
+            [Duration::zero(), Duration::seconds(1), Duration::seconds(6), Duration::seconds(10)];
+        let sum_3: Duration = duration_arr.into_iter().sum();
         assert_eq!(sum_3, Duration::seconds(17));
     }
 
     #[test]
     fn test_duration_fmt() {
-        assert_eq!(Duration::zero().to_string(), "PT0S");
-        assert_eq!(Duration::days(42).to_string(), "P42D");
-        assert_eq!(Duration::days(-42).to_string(), "-P42D");
-        assert_eq!(Duration::seconds(42).to_string(), "PT42S");
-        assert_eq!(Duration::milliseconds(42).to_string(), "PT0.042S");
-        assert_eq!(Duration::microseconds(42).to_string(), "PT0.000042S");
-        assert_eq!(Duration::nanoseconds(42).to_string(), "PT0.000000042S");
-        assert_eq!((Duration::days(7) + Duration::milliseconds(6543)).to_string(), "P7DT6.543S");
-        assert_eq!(Duration::seconds(-86401).to_string(), "-P1DT1S");
-        assert_eq!(Duration::nanoseconds(-1).to_string(), "-PT0.000000001S");
+        assert_display_eq(Duration::zero(), "PT0S");
+        assert_display_eq(Duration::days(42), "P42D");
+        assert_display_eq(Duration::days(-42), "-P42D");
+        assert_display_eq(Duration::seconds(42), "PT42S");
+        assert_display_eq(Duration::milliseconds(42), "PT0.042S");
+        assert_display_eq(Duration::microseconds(42), "PT0.000042S");
+        assert_display_eq(Duration::nanoseconds(42), "PT0.000000042S");
+        assert_display_eq(Duration::days(7) + Duration::milliseconds(6543), "P7DT6.543S");
+        assert_display_eq(Duration::seconds(-86401), "-P1DT1S");
+        assert_display_eq(Duration::nanoseconds(-1), "-PT0.000000001S");
 
         // the format specifier should have no effect on `Duration`
-        assert_eq!(
-            format!("{:30}", Duration::days(1) + Duration::milliseconds(2345)),
-            "P1DT2.345S"
-        );
+        let d = Duration::days(1) + Duration::milliseconds(2345);
+        write!(&mut WriteCompare::new("P1DT2.345S"), "{:30}", d).unwrap();
     }
 
     #[test]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     fn test_to_std() {
         assert_eq!(Duration::seconds(1).to_std(), Ok(StdDuration::new(1, 0)));
         assert_eq!(Duration::seconds(86401).to_std(), Ok(StdDuration::new(86401, 0)));
@@ -725,6 +726,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     fn test_from_std() {
         assert_eq!(Ok(Duration::seconds(1)), Duration::from_std(StdDuration::new(1, 0)));
         assert_eq!(Ok(Duration::seconds(86401)), Duration::from_std(StdDuration::new(86401, 0)));

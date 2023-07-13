@@ -1,7 +1,9 @@
 use super::NaiveTime;
 use crate::oldtime::Duration;
+use crate::utils::{assert_display_eq, WriteCompare};
 use crate::Timelike;
-use std::u32;
+
+use core::fmt::Write;
 
 #[test]
 fn test_time_from_hms_milli() {
@@ -197,35 +199,22 @@ fn test_time_sub() {
 
 #[test]
 fn test_time_fmt() {
-    assert_eq!(
-        format!("{}", NaiveTime::from_hms_milli_opt(23, 59, 59, 999).unwrap()),
-        "23:59:59.999"
-    );
-    assert_eq!(
-        format!("{}", NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap()),
-        "23:59:60"
-    );
-    assert_eq!(
-        format!("{}", NaiveTime::from_hms_milli_opt(23, 59, 59, 1_001).unwrap()),
-        "23:59:60.001"
-    );
-    assert_eq!(
-        format!("{}", NaiveTime::from_hms_micro_opt(0, 0, 0, 43210).unwrap()),
-        "00:00:00.043210"
-    );
-    assert_eq!(
-        format!("{}", NaiveTime::from_hms_nano_opt(0, 0, 0, 6543210).unwrap()),
-        "00:00:00.006543210"
+    assert_display_eq(NaiveTime::from_hms_milli_opt(23, 59, 59, 999).unwrap(), "23:59:59.999");
+    assert_display_eq(NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap(), "23:59:60");
+    assert_display_eq(NaiveTime::from_hms_milli_opt(23, 59, 59, 1_001).unwrap(), "23:59:60.001");
+    assert_display_eq(NaiveTime::from_hms_micro_opt(0, 0, 0, 43210).unwrap(), "00:00:00.043210");
+    assert_display_eq(
+        NaiveTime::from_hms_nano_opt(0, 0, 0, 6543210).unwrap(),
+        "00:00:00.006543210",
     );
 
-    // the format specifier should have no effect on `NaiveTime`
-    assert_eq!(
-        format!("{:30}", NaiveTime::from_hms_milli_opt(3, 5, 7, 9).unwrap()),
-        "03:05:07.009"
-    );
+    // A format specifier such as `{:30}` should have no effect on `NaiveTime`.
+    let t = NaiveTime::from_hms_milli_opt(3, 5, 7, 9).unwrap();
+    write!(&mut WriteCompare::new("03:05:07.009"), "{:30}", t).unwrap();
 }
 
 #[test]
+#[cfg(any(feature = "alloc", feature = "std"))]
 fn test_date_from_str() {
     // valid cases
     let valid = [
@@ -285,34 +274,34 @@ fn test_time_parse_from_str() {
 }
 
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(any(feature = "alloc", feature = "std"))] // formatting requires allocations
 fn test_time_format() {
     let t = NaiveTime::from_hms_nano_opt(3, 5, 7, 98765432).unwrap();
-    assert_eq!(t.format("%H,%k,%I,%l,%P,%p").to_string(), "03, 3,03, 3,am,AM");
-    assert_eq!(t.format("%M").to_string(), "05");
-    assert_eq!(t.format("%S,%f,%.f").to_string(), "07,098765432,.098765432");
-    assert_eq!(t.format("%.3f,%.6f,%.9f").to_string(), ".098,.098765,.098765432");
-    assert_eq!(t.format("%R").to_string(), "03:05");
-    assert_eq!(t.format("%T,%X").to_string(), "03:05:07,03:05:07");
-    assert_eq!(t.format("%r").to_string(), "03:05:07 AM");
-    assert_eq!(t.format("%t%n%%%n%t").to_string(), "\t\n%\n\t");
+    assert_display_eq(t.format("%H,%k,%I,%l,%P,%p"), "03, 3,03, 3,am,AM");
+    assert_display_eq(t.format("%M"), "05");
+    assert_display_eq(t.format("%S,%f,%.f"), "07,098765432,.098765432");
+    assert_display_eq(t.format("%.3f,%.6f,%.9f"), ".098,.098765,.098765432");
+    assert_display_eq(t.format("%R"), "03:05");
+    assert_display_eq(t.format("%T,%X"), "03:05:07,03:05:07");
+    assert_display_eq(t.format("%r"), "03:05:07 AM");
+    assert_display_eq(t.format("%t%n%%%n%t"), "\t\n%\n\t");
 
     let t = NaiveTime::from_hms_micro_opt(3, 5, 7, 432100).unwrap();
-    assert_eq!(t.format("%S,%f,%.f").to_string(), "07,432100000,.432100");
-    assert_eq!(t.format("%.3f,%.6f,%.9f").to_string(), ".432,.432100,.432100000");
+    assert_display_eq(t.format("%S,%f,%.f"), "07,432100000,.432100");
+    assert_display_eq(t.format("%.3f,%.6f,%.9f"), ".432,.432100,.432100000");
 
     let t = NaiveTime::from_hms_milli_opt(3, 5, 7, 210).unwrap();
-    assert_eq!(t.format("%S,%f,%.f").to_string(), "07,210000000,.210");
-    assert_eq!(t.format("%.3f,%.6f,%.9f").to_string(), ".210,.210000,.210000000");
+    assert_display_eq(t.format("%S,%f,%.f"), "07,210000000,.210");
+    assert_display_eq(t.format("%.3f,%.6f,%.9f"), ".210,.210000,.210000000");
 
     let t = NaiveTime::from_hms_opt(3, 5, 7).unwrap();
-    assert_eq!(t.format("%S,%f,%.f").to_string(), "07,000000000,");
-    assert_eq!(t.format("%.3f,%.6f,%.9f").to_string(), ".000,.000000,.000000000");
+    assert_display_eq(t.format("%S,%f,%.f"), "07,000000000,");
+    assert_display_eq(t.format("%.3f,%.6f,%.9f"), ".000,.000000,.000000000");
 
     // corner cases
-    assert_eq!(NaiveTime::from_hms_opt(13, 57, 9).unwrap().format("%r").to_string(), "01:57:09 PM");
-    assert_eq!(
-        NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap().format("%X").to_string(),
-        "23:59:60"
+    assert_display_eq(NaiveTime::from_hms_opt(13, 57, 9).unwrap().format("%r"), "01:57:09 PM");
+    assert_display_eq(
+        NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap().format("%X"),
+        "23:59:60",
     );
 }

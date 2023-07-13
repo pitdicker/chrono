@@ -4,6 +4,7 @@ use crate::offset::{FixedOffset, TimeZone, Utc};
 #[cfg(feature = "clock")]
 use crate::offset::{Local, Offset};
 use crate::oldtime::Duration;
+use crate::utils::{assert_debug_eq, assert_display_eq};
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::Timelike;
 use crate::{Datelike, Days, LocalResult, Months, NaiveDateTime};
@@ -131,40 +132,40 @@ fn test_datetime_add_days() {
     let est = FixedOffset::west_opt(5 * 60 * 60).unwrap();
     let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(5)),
-        "2014-05-11 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(5),
+        "2014-05-11 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(5)),
-        "2014-05-11 07:08:09 +09:00"
-    );
-
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(35)),
-        "2014-06-10 07:08:09 -05:00"
-    );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(35)),
-        "2014-06-10 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(5),
+        "2014-05-11 07:08:09 +09:00",
     );
 
-    assert_eq!(
-        format!("{}", DstTester.with_ymd_and_hms(2014, 4, 6, 7, 8, 9).unwrap() + Days::new(5)),
-        "2014-04-11 07:08:09 +09:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(35),
+        "2014-06-10 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", DstTester.with_ymd_and_hms(2014, 4, 6, 7, 8, 9).unwrap() + Days::new(10)),
-        "2014-04-16 07:08:09 +08:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Days::new(35),
+        "2014-06-10 07:08:09 +09:00",
     );
 
-    assert_eq!(
-        format!("{}", DstTester.with_ymd_and_hms(2014, 9, 6, 7, 8, 9).unwrap() + Days::new(5)),
-        "2014-09-11 07:08:09 +08:00"
+    assert_display_eq(
+        DstTester.with_ymd_and_hms(2014, 4, 6, 7, 8, 9).unwrap() + Days::new(5),
+        "2014-04-11 07:08:09 +09:00",
     );
-    assert_eq!(
-        format!("{}", DstTester.with_ymd_and_hms(2014, 9, 6, 7, 8, 9).unwrap() + Days::new(10)),
-        "2014-09-16 07:08:09 +09:00"
+    assert_display_eq(
+        DstTester.with_ymd_and_hms(2014, 4, 6, 7, 8, 9).unwrap() + Days::new(10),
+        "2014-04-16 07:08:09 +08:00",
+    );
+
+    assert_display_eq(
+        DstTester.with_ymd_and_hms(2014, 9, 6, 7, 8, 9).unwrap() + Days::new(5),
+        "2014-09-11 07:08:09 +08:00",
+    );
+    assert_display_eq(
+        DstTester.with_ymd_and_hms(2014, 9, 6, 7, 8, 9).unwrap() + Days::new(10),
+        "2014-09-16 07:08:09 +09:00",
     );
 }
 
@@ -173,22 +174,22 @@ fn test_datetime_sub_days() {
     let est = FixedOffset::west_opt(5 * 60 * 60).unwrap();
     let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(5)),
-        "2014-05-01 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(5),
+        "2014-05-01 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(5)),
-        "2014-05-01 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(5),
+        "2014-05-01 07:08:09 +09:00",
     );
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(35)),
-        "2014-04-01 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(35),
+        "2014-04-01 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(35)),
-        "2014-04-01 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Days::new(35),
+        "2014-04-01 07:08:09 +09:00",
     );
 }
 
@@ -197,22 +198,22 @@ fn test_datetime_add_months() {
     let est = FixedOffset::west_opt(5 * 60 * 60).unwrap();
     let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(1)),
-        "2014-06-06 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(1),
+        "2014-06-06 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(1)),
-        "2014-06-06 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(1),
+        "2014-06-06 07:08:09 +09:00",
     );
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(5)),
-        "2014-10-06 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(5),
+        "2014-10-06 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(5)),
-        "2014-10-06 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() + Months::new(5),
+        "2014-10-06 07:08:09 +09:00",
     );
 }
 
@@ -221,22 +222,22 @@ fn test_datetime_sub_months() {
     let est = FixedOffset::west_opt(5 * 60 * 60).unwrap();
     let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(1)),
-        "2014-04-06 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(1),
+        "2014-04-06 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(1)),
-        "2014-04-06 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(1),
+        "2014-04-06 07:08:09 +09:00",
     );
 
-    assert_eq!(
-        format!("{}", est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(5)),
-        "2013-12-06 07:08:09 -05:00"
+    assert_display_eq(
+        est.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(5),
+        "2013-12-06 07:08:09 -05:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(5)),
-        "2013-12-06 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap() - Months::new(5),
+        "2013-12-06 07:08:09 +09:00",
     );
 }
 
@@ -246,55 +247,46 @@ fn test_datetime_offset() {
     let edt = FixedOffset::west_opt(4 * 60 * 60).unwrap();
     let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
 
-    assert_eq!(
-        format!("{}", Utc.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06 07:08:09 UTC"
+    assert_display_eq(
+        Utc.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(),
+        "2014-05-06 07:08:09 UTC",
     );
-    assert_eq!(
-        format!("{}", edt.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06 07:08:09 -04:00"
+    assert_display_eq(
+        edt.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(),
+        "2014-05-06 07:08:09 -04:00",
     );
-    assert_eq!(
-        format!("{}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06 07:08:09 +09:00"
+    assert_display_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(),
+        "2014-05-06 07:08:09 +09:00",
     );
-    assert_eq!(
-        format!("{:?}", Utc.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06T07:08:09Z"
+    assert_debug_eq(Utc.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(), "2014-05-06T07:08:09Z");
+    assert_debug_eq(
+        edt.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(),
+        "2014-05-06T07:08:09-04:00",
     );
-    assert_eq!(
-        format!("{:?}", edt.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06T07:08:09-04:00"
-    );
-    assert_eq!(
-        format!("{:?}", kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap()),
-        "2014-05-06T07:08:09+09:00"
+    assert_debug_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap(),
+        "2014-05-06T07:08:09+09:00",
     );
 
     // edge cases
-    assert_eq!(
-        format!("{:?}", Utc.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap()),
-        "2014-05-06T00:00:00Z"
+    assert_debug_eq(Utc.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap(), "2014-05-06T00:00:00Z");
+    assert_debug_eq(
+        edt.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap(),
+        "2014-05-06T00:00:00-04:00",
     );
-    assert_eq!(
-        format!("{:?}", edt.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap()),
-        "2014-05-06T00:00:00-04:00"
+    assert_debug_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap(),
+        "2014-05-06T00:00:00+09:00",
     );
-    assert_eq!(
-        format!("{:?}", kst.with_ymd_and_hms(2014, 5, 6, 0, 0, 0).unwrap()),
-        "2014-05-06T00:00:00+09:00"
+    assert_debug_eq(Utc.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap(), "2014-05-06T23:59:59Z");
+    assert_debug_eq(
+        edt.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap(),
+        "2014-05-06T23:59:59-04:00",
     );
-    assert_eq!(
-        format!("{:?}", Utc.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap()),
-        "2014-05-06T23:59:59Z"
-    );
-    assert_eq!(
-        format!("{:?}", edt.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap()),
-        "2014-05-06T23:59:59-04:00"
-    );
-    assert_eq!(
-        format!("{:?}", kst.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap()),
-        "2014-05-06T23:59:59+09:00"
+    assert_debug_eq(
+        kst.with_ymd_and_hms(2014, 5, 6, 23, 59, 59).unwrap(),
+        "2014-05-06T23:59:59+09:00",
     );
 
     let dt = Utc.with_ymd_and_hms(2014, 5, 6, 7, 8, 9).unwrap();
@@ -614,6 +606,7 @@ fn test_datetime_parse_from_str() {
 }
 
 #[test]
+#[cfg(any(feature = "alloc", feature = "std"))]
 fn test_to_string_round_trip() {
     let dt = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
     let _dt: DateTime<Utc> = dt.to_string().parse().unwrap();
@@ -641,26 +634,10 @@ fn test_datetime_format_with_local() {
 }
 
 #[test]
-#[cfg(feature = "clock")]
-fn test_datetime_is_copy() {
-    // UTC is known to be `Copy`.
-    let a = Utc::now();
-    let b = a;
-    assert_eq!(a, b);
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_datetime_is_send() {
-    use std::thread;
-
-    // UTC is known to be `Send`.
-    let a = Utc::now();
-    thread::spawn(move || {
-        let _ = a;
-    })
-    .join()
-    .unwrap();
+fn test_datetime_is_send_and_copy() {
+    fn _assert_send_copy<T: Send + Copy>() {}
+    // UTC is known to be `Send + Copy`.
+    _assert_send_copy::<DateTime<Utc>>();
 }
 
 #[test]

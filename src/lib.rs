@@ -389,7 +389,7 @@
 #![warn(unreachable_pub)]
 #![deny(dead_code)]
 #![deny(clippy::tests_outside_test_module)]
-#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 // can remove this if/when rustc-serialize support is removed
 // keeps clippy happy in the meantime
 #![cfg_attr(feature = "rustc-serialize", allow(deprecated))]
@@ -401,7 +401,9 @@ extern crate time as oldtime;
 #[cfg(not(feature = "oldtime"))]
 mod oldtime;
 // this reexport is to aid the transition and should not be in the prelude!
-pub use oldtime::{Duration, OutOfRangeError};
+pub use oldtime::Duration;
+#[cfg(feature = "std")]
+pub use oldtime::OutOfRangeError;
 
 use core::fmt;
 
@@ -479,6 +481,8 @@ pub use month::{Month, Months, ParseMonthError};
 
 mod traits;
 pub use traits::{Datelike, Timelike};
+
+mod utils;
 
 #[cfg(feature = "__internal_bench")]
 #[doc(hidden)]
