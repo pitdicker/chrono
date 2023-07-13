@@ -13,7 +13,7 @@ use core::{fmt, str};
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// L10n locales.
-#[cfg(feature = "unstable-locales")]
+#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 use pure_rust_locales::Locale;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
@@ -1304,8 +1304,7 @@ impl NaiveDate {
     }
 
     /// Formats the date with the specified formatting items and locale.
-    #[cfg(feature = "unstable-locales")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     #[inline]
     #[must_use]
     pub fn format_localized_with_items<'a, I, B>(
@@ -1324,8 +1323,7 @@ impl NaiveDate {
     ///
     /// See the [`crate::format::strftime`] module on the supported escape
     /// sequences.
-    #[cfg(feature = "unstable-locales")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     #[inline]
     #[must_use]
     pub fn format_localized<'a>(

@@ -229,7 +229,7 @@
 //! # #[allow(unused_imports)]
 //! use chrono::prelude::*;
 //!
-//! # #[cfg(feature = "unstable-locales")]
+//! # #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 //! # fn test() {
 //! let dt = Utc.with_ymd_and_hms(2014, 11, 28, 12, 0, 9).unwrap();
 //! assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(), "2014-11-28 12:00:09");
@@ -246,9 +246,9 @@
 //! let dt_nano = NaiveDate::from_ymd_opt(2014, 11, 28).unwrap().and_hms_nano_opt(12, 0, 9, 1).unwrap().and_local_timezone(Utc).unwrap();
 //! assert_eq!(format!("{:?}", dt_nano), "2014-11-28T12:00:09.000000001Z");
 //! # }
-//! # #[cfg(not(feature = "unstable-locales"))]
+//! # #[cfg(not(all(feature = "unstable-locales", any(feature = "alloc", feature = "std"))))]
 //! # fn test() {}
-//! # if cfg!(feature = "unstable-locales") {
+//! # if cfg!(all(feature = "unstable-locales", any(feature = "alloc", feature = "std"))) {
 //! #    test();
 //! # }
 //! ```
@@ -422,8 +422,7 @@ pub mod prelude {
     #[cfg_attr(docsrs, doc(cfg(feature = "clock")))]
     #[doc(no_inline)]
     pub use crate::Local;
-    #[cfg(feature = "unstable-locales")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     #[doc(no_inline)]
     pub use crate::Locale;
     #[doc(no_inline)]
@@ -454,7 +453,6 @@ pub use datetime::{DateTime, SecondsFormat, MAX_DATETIME, MIN_DATETIME};
 pub mod format;
 /// L10n locales.
 #[cfg(feature = "unstable-locales")]
-#[cfg_attr(docsrs, doc(cfg(feature = "unstable-locales")))]
 pub use format::Locale;
 pub use format::{ParseError, ParseResult};
 

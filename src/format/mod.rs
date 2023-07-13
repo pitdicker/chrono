@@ -51,27 +51,25 @@ pub(crate) mod scan;
 
 pub mod strftime;
 
-#[cfg(feature = "unstable-locales")]
 pub(crate) mod locales;
 
 pub(crate) use formatting::write_hundreds;
+pub use formatting::Formatter;
+#[allow(deprecated)]
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use formatting::{format, format_item, DelayedFormat};
-#[cfg(feature = "unstable-locales")]
+#[allow(deprecated)]
+#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
 pub use formatting::{format_item_localized, format_localized};
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) use formatting::{write_rfc2822, write_rfc3339};
+#[cfg(feature = "unstable-locales")]
+pub use locales::Locale;
+#[cfg(not(feature = "unstable-locales"))]
+pub(crate) use locales::Locale;
 pub use parse::{parse, parse_and_remainder};
 pub use parsed::Parsed;
-/// L10n locales.
-#[cfg(feature = "unstable-locales")]
-pub use pure_rust_locales::Locale;
 pub use strftime::StrftimeItems;
-
-#[cfg(not(feature = "unstable-locales"))]
-#[allow(dead_code)]
-#[derive(Debug)]
-struct Locale;
 
 /// An uninhabited type used for `InternalNumeric` and `InternalFixed` below.
 #[derive(Clone, PartialEq, Eq, Hash)]
