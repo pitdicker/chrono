@@ -1666,7 +1666,7 @@ mod tests {
 
         // Check that the format is what we expect
         let formatter =
-            FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new(RFC850_FMT)).unwrap();
+            FormattingSpec::<DateTime<Utc>>::from_strftime(RFC850_FMT).unwrap();
         assert_display_eq(dt.format_with(&formatter), "Sunday, 06-Nov-94 08:49:37 GMT");
 
         // Check that it parses correctly

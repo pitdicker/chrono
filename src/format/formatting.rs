@@ -10,6 +10,7 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 use core::borrow::Borrow;
 use core::fmt::{self, Display, Write};
+use core::iter::IntoIterator;
 use core::marker::PhantomData;
 
 use crate::offset::{FixedOffset, Offset};
@@ -19,9 +20,72 @@ use crate::{Datelike, ParseError, SecondsFormat, TimeZone, Timelike, Weekday};
 use super::locales;
 use super::{
     Colons, Fixed, InternalFixed, InternalInternal, Item, Locale, Numeric, OffsetFormat,
-    OffsetPrecision, Pad,
+    OffsetPrecision, Pad, StrftimeItems,
 };
 use locales::*;
+
+/// Abstraction to allow various providers of `Item` iterators: a slice, `Vec`, or `StrftimeItems`.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+enum ItemsProvider<'a> {
+    /// TODO
+    Strftime(StrftimeItems<'a>),
+    /// TODO
+    Owned(Vec<Item<'a>>),
+    /// TODO
+    Borrowed(&'a [Item<'a>]),
+}
+
+impl<'a> ItemsProvider<'a> {
+    fn iter(&'a self) -> ItemIter<'a> {
+        match self {
+            ItemsProvider::Strftime(iter) => ItemIter::Strftime(iter.clone()),
+            ItemsProvider::Owned(vec) => ItemIter::Slice(vec.iter()),
+            ItemsProvider::Borrowed(slice) => ItemIter::Slice(slice.iter()),
+        }
+    }
+}
+
+/// Abstraction to allow various `Item` iterators: `StrftimeItems` or `std::slice::Iter`.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum ItemIter<'a> {
+    /// TODO
+    Strftime(StrftimeItems<'a>),
+    /// TODO
+    Slice(std::slice::Iter<'a, Item<'a>>),
+}
+
+impl<'a> Iterator for ItemIter<'a> {
+    type Item = Cow<'a, Item<'a>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ItemIter::Strftime(i) => i.next().map(Cow::Owned),
+            ItemIter::Slice(i) => i.next().map(Cow::Borrowed),
+        }
+    }
+}
+
+/// Similar to `std::borrow::Cow`, but without the `ToOwned` functionality (which we don't need,
+/// and which is only available with `alloc`).
+#[derive(Clone, Debug)]
+pub enum Cow<'a, B>
+where
+    B: 'a,
+{
+    Borrowed(&'a B),
+    Owned(B),
+}
+
+impl<'a, B> Borrow<B> for Cow<'a, B> {
+    fn borrow(&self) -> &B {
+        match self {
+            Cow::Borrowed(b) => b,
+            Cow::Owned(o) => o,
+        }
+    }
+}
 
 /// Formatting specification for type `T` using formatting items provided by `I`.
 ///
@@ -36,124 +100,28 @@ use locales::*;
 ///
 /// [`StrftimeItems`]: crate::format::StrftimeItems
 #[derive(Clone, Debug)]
-pub struct FormattingSpec<I, T> {
-    pub(crate) items: I,
-    pub(crate) date_time_type: PhantomData<T>,
-    #[allow(dead_code)]
-    pub(crate) locale: Locale,
+pub struct FormattingSpec<'a, T> {
+    items: ItemsProvider<'a>,
+    date_time_type: PhantomData<T>,
+    locale: Locale,
 }
 
-impl<'a, J, Tz: TimeZone> FormattingSpec<J, DateTime<Tz>> {
-    /// Create a new `FormattingSpec` that can be used to format multiple [`DateTime`]'s.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if one of the formatting [`Item`]'s is for a value the input type doesn't
-    /// have, such as an hour or an offset from UTC on a `NaiveDate` type.
-    ///
-    /// # Example 1
-    ///
-    /// Take a slice as argument. This is the most efficient way to use a `FormattingSpec`.
-    ///
-    /// ```
-    /// # use chrono::{ParseError, TimeZone};
-    /// use chrono::{DateTime, Utc};
-    /// use chrono::format::{FormattingSpec, StrftimeItems};
-    ///
-    /// let fmt_str = "%a, %Y-%m-%d %H:%M:%S";
-    /// let fmt_items = StrftimeItems::new(&fmt_str).parse()?;
-    /// let formatter = FormattingSpec::<_, DateTime<Utc>>::from(fmt_items.as_slice())?;
-    ///
-    /// // We can format multiple values without re-parsing the format string.
-    /// let dt1 = Utc.with_ymd_and_hms(2023, 4, 5, 6, 7, 8).unwrap();
-    /// assert_eq!(dt1.format_with(&formatter).to_string(), "Wed, 2023-04-05 06:07:08");
-    /// let dt2 = Utc.with_ymd_and_hms(2023, 6, 7, 8, 9, 10).unwrap();
-    /// assert_eq!(dt2.format_with(&formatter).to_string(), "Wed, 2023-06-07 08:09:10");
-    /// # Ok::<(), ParseError>(())
-    /// ```
-    ///
-    /// # Example 2
-    ///
-    /// Take a `Vec` as argument. This creates an owned `FormattingSpec`.
-    ///
-    /// An owned `FormattingSpec` comes with a disadvantage: it will create owned [`Formatter`]'s
-    /// in turn, which involves cloning the `Vec` on every use.
-    ///
-    /// ```
-    /// # use chrono::{ParseError, TimeZone};
-    /// use chrono::{DateTime, Utc};
-    /// use chrono::format::{FormattingSpec, StrftimeItems};
-    ///
-    /// let fmt_str = "%a, %Y-%m-%d %H:%M:%S";
-    /// let fmt_items = StrftimeItems::new(&fmt_str).parse()?;
-    /// let formatter = FormattingSpec::<_, DateTime<Utc>>::from(fmt_items)?; // clone 1
-    ///
-    /// let dt1 = Utc.with_ymd_and_hms(2023, 4, 5, 6, 7, 8).unwrap();
-    /// assert_eq!(dt1.format_with(&formatter).to_string(), "Wed, 2023-04-05 06:07:08"); // clone 2
-    /// let dt2 = Utc.with_ymd_and_hms(2023, 6, 7, 8, 9, 10).unwrap();
-    /// assert_eq!(dt2.format_with(&formatter).to_string(), "Wed, 2023-06-07 08:09:10"); // clone 3
-    /// # Ok::<(), ParseError>(())
-    /// ```
-    ///
-    /// # Example 3
-    ///
-    /// Take a [`StrftimeItems`] iterator as argument.
-    ///
-    /// The [`StrftimeItems`] iterator will parse the format sring on creation of the
-    /// `FormattingSpec`, and reparse it on every use during formatting. This can be a simple
-    /// solution if you need to work without `std` or `alloc`.
-    ///
-    /// But if you can allocate, [`DateTime::format_to_string`] is an easier and slightly more
-    /// performant alternative.
-    ///
-    /// [`StrftimeItems`]: crate::format::StrftimeItems
-    ///
-    /// ```ignore
-    /// # use chrono::{ParseError, TimeZone};
-    /// use chrono::{DateTime, Utc};
-    /// use chrono::format::{FormattingSpec, StrftimeItems};
-    ///
-    /// let fmt_str = "%a, %Y-%m-%d %H:%M:%S";
-    /// let fmt_str_iter = StrftimeItems::new(&fmt_str);
-    /// let formatter = FormattingSpec::<_, DateTime<Utc>>::from(fmt_str_iter)?; // parse 1
-    ///
-    /// let dt1 = Utc.with_ymd_and_hms(2023, 4, 5, 6, 7, 8).unwrap();
-    /// assert_eq!(dt1.format_with(&formatter).to_string(), "Wed, 2023-04-05 06:07:08"); // parse 2
-    /// let dt2 = Utc.with_ymd_and_hms(2023, 6, 7, 8, 9, 10).unwrap();
-    /// assert_eq!(dt2.format_with(&formatter).to_string(), "Wed, 2023-06-07 08:09:10"); // parse 3
-    /// # Ok::<(), ParseError>(())
-    /// ```
-    pub fn from<I, B>(items: I) -> Result<Self, ParseError>
+impl<'a, T> FormattingSpec<'a, T> {
+    pub(crate) fn formatter<Off>(
+        &'a self,
+        date: Option<NaiveDate>,
+        time: Option<NaiveTime>,
+        offset: Option<Off>,
+    ) -> Formatter<ItemIter<'a>, Off>
     where
-        I: IntoIterator<Item = B, IntoIter = J>,
-        J: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
+        Off: Offset + Display,
     {
-        let items = items.into_iter();
-        let locale = locales::default_locale();
-        for item in items.clone() {
-            item.borrow().check_fields(true, true, true, locale)?
-        }
-        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
-    }
-
-    /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s.
-    #[cfg(feature = "unstable-locales")]
-    pub fn localized_from<I, B>(items: I, locale: Locale) -> Result<Self, ParseError>
-    where
-        I: IntoIterator<Item = B, IntoIter = J>,
-        J: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        let items = items.into_iter();
-        for item in items.clone() {
-            item.borrow().check_fields(true, true, true, locale)?
-        }
-        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+        let items = self.items.iter();
+        Formatter { date, time, offset, items, locale: self.locale }
     }
 }
 
-impl<'a, Tz: TimeZone> FormattingSpec<&'a [Item<'a>], DateTime<Tz>> {
+impl<'a, Tz: TimeZone> FormattingSpec<'a, DateTime<Tz>> {
     /// Creates a new `FormattingSpec` given a slice of [`Item`]'s.
     ///
     /// The difference with the more generic [`FormattingSpec::from`] is that `from_slice` is
@@ -204,48 +172,100 @@ impl<'a, Tz: TimeZone> FormattingSpec<&'a [Item<'a>], DateTime<Tz>> {
             }
             i += 1;
         }
-        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+        Ok(FormattingSpec {
+            items: ItemsProvider::Borrowed(items),
+            date_time_type: PhantomData,
+            locale,
+        })
+    }
+
+    /// Creates a new `FormattingSpec` given a `Vec<Item>`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if one of the formatting [`Item`]'s is for a value the input type doesn't
+    /// have, such as an hour or an offset from UTC on a [`NaiveDate`] type.
+    ///
+    /// # Example 2
+    ///
+    /// Take a `Vec` as argument. This creates an owned `FormattingSpec`.
+    ///
+    /// An owned `FormattingSpec` comes with a disadvantage: it will create owned [`Formatter`]'s
+    /// in turn, which involves cloning the `Vec` on every use.
+    ///
+    /// ```
+    /// # use chrono::{ParseError, TimeZone};
+    /// use chrono::{DateTime, Utc};
+    /// use chrono::format::{FormattingSpec, StrftimeItems};
+    ///
+    /// let fmt_str = "%a, %Y-%m-%d %H:%M:%S";
+    /// let fmt_items = StrftimeItems::new(&fmt_str).parse()?;
+    /// let formatter = FormattingSpec::<_, DateTime<Utc>>::from(fmt_items)?; // clone 1
+    ///
+    /// let dt1 = Utc.with_ymd_and_hms(2023, 4, 5, 6, 7, 8).unwrap();
+    /// assert_eq!(dt1.format_with(&formatter).to_string(), "Wed, 2023-04-05 06:07:08"); // clone 2
+    /// let dt2 = Utc.with_ymd_and_hms(2023, 6, 7, 8, 9, 10).unwrap();
+    /// assert_eq!(dt2.format_with(&formatter).to_string(), "Wed, 2023-06-07 08:09:10"); // clone 3
+    /// # Ok::<(), ParseError>(())
+    /// ```
+    pub fn from_vec(items: Vec<Item<'a>>) -> Result<Self, ParseError> {
+        let locale = locales::default_locale();
+        for item in items.as_slice().iter() {
+            item.check_fields(true, true, true, locale)?
+        }
+        Ok(FormattingSpec {
+            items: ItemsProvider::Owned(items),
+            date_time_type: PhantomData,
+            locale,
+        })
+    }
+
+    /// Creates a new `FormattingSpec` from an strftime formatting string.
+    ///
+    /// # Example
+    ///
+    /// The [`StrftimeItems`] iterator will parse the format sring on creation of the
+    /// `FormattingSpec`, and reparse it on every use during formatting. This can be a simple
+    /// solution if you need to work without `std` or `alloc`.
+    ///
+    /// But if you can allocate, [`DateTime::format_to_string`] is an easier and slightly more
+    /// performant alternative.
+    ///
+    /// [`StrftimeItems`]: crate::format::StrftimeItems
+    ///
+    /// ```ignore
+    /// # use chrono::{ParseError, TimeZone};
+    /// use chrono::{DateTime, Utc};
+    /// use chrono::format::{FormattingSpec, StrftimeItems};
+    ///
+    /// let fmt_str = "%a, %Y-%m-%d %H:%M:%S";
+    /// let fmt_str_iter = StrftimeItems::new(&fmt_str);
+    /// let formatter = FormattingSpec::<_, DateTime<Utc>>::from(fmt_str_iter)?; // parse 1
+    ///
+    /// let dt1 = Utc.with_ymd_and_hms(2023, 4, 5, 6, 7, 8).unwrap();
+    /// assert_eq!(dt1.format_with(&formatter).to_string(), "Wed, 2023-04-05 06:07:08"); // parse 2
+    /// let dt2 = Utc.with_ymd_and_hms(2023, 6, 7, 8, 9, 10).unwrap();
+    /// assert_eq!(dt2.format_with(&formatter).to_string(), "Wed, 2023-06-07 08:09:10"); // parse 3
+    /// # Ok::<(), ParseError>(())
+    /// ```
+    pub fn from_strftime(fmt_str: &'a str) -> Result<Self, ParseError> {
+        let locale = locales::default_locale();
+        let items = StrftimeItems::new(fmt_str);
+        for item in items.clone() {
+            item.borrow().check_fields(true, true, true, locale)?
+        }
+        Ok(FormattingSpec {
+            items: ItemsProvider::Strftime(items),
+            date_time_type: PhantomData,
+            locale,
+        })
     }
 }
 
 macro_rules! formatting_spec_impls {
     ($type:ty, $date:literal, $time:literal, $off:literal) => {
-        impl<'a, J> FormattingSpec<J, $type> {
-            /// Create a new `FormattingSpec` that can be used to format multiple
-            #[doc = concat!("[`", stringify!($type), "`]'s.")]
-            pub fn from<I, B>(items: I) -> Result<Self, ParseError>
-            where
-                I: IntoIterator<Item = B, IntoIter = J>,
-                J: Iterator<Item = B> + Clone,
-                B: Borrow<Item<'a>>,
-            {
-                let items = items.into_iter();
-                let locale = locales::default_locale();
-                for item in items.clone() {
-                    item.borrow().check_fields($date, $time, $off, locale)?
-                }
-                Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
-            }
-
-            /// Create a new `FormattingSpec` that can be used to format multiple
-            #[doc = concat!("[`", stringify!($type), "`]'s.")]
-            #[cfg(feature = "unstable-locales")]
-            pub fn localized_from<I, B>(items: I, locale: Locale) -> Result<Self, ParseError>
-            where
-                I: IntoIterator<Item = B, IntoIter = J>,
-                J: Iterator<Item = B> + Clone,
-                B: Borrow<Item<'a>>,
-            {
-                let items = items.into_iter();
-                for item in items.clone() {
-                    item.borrow().check_fields($date, $time, $off, locale)?
-                }
-                Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
-            }
-        }
-
-        impl<'a> FormattingSpec<&'a [Item<'a>], $type> {
-            /// Creates a new `FormattingSpec` given a slice of [`Item`]'s.
+        impl<'a> FormattingSpec<'a, $type> {
+            /// TODO
             pub const fn from_slice(items: &'a [Item<'a>]) -> Result<Self, ParseError> {
                 let locale = locales::default_locale();
                 let mut i = 0;
@@ -255,7 +275,26 @@ macro_rules! formatting_spec_impls {
                     }
                     i += 1;
                 }
-                Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+                Ok(FormattingSpec { items: ItemsProvider::Borrowed(items), date_time_type: PhantomData, locale })
+            }
+
+            /// TODO
+            pub fn from_vec(items: Vec<Item<'a>>) -> Result<Self, ParseError> {
+                let locale = locales::default_locale();
+                for item in items.as_slice().iter() {
+                    item.check_fields($date, $time, $off, locale)?
+                }
+                Ok(FormattingSpec { items: ItemsProvider::Owned(items), date_time_type: PhantomData, locale })
+            }
+
+            /// TODO
+            pub fn from_strftime(fmt_str: &'a str) -> Result<Self, ParseError> {
+                let locale = locales::default_locale();
+                let items = StrftimeItems::new(fmt_str);
+                for item in items.clone() {
+                    item.borrow().check_fields($date, $time, $off, locale)?
+                }
+                Ok(FormattingSpec { items: ItemsProvider::Strftime(items), date_time_type: PhantomData, locale })
             }
         }
     };
@@ -280,27 +319,6 @@ pub struct Formatter<I, Off> {
     /// Locale used for text
     /// ZST if the `unstable-locales` feature is not enabled.
     locale: Locale,
-}
-
-impl<'a, Off> Formatter<&'a [Item<'a>], Off>
-where
-    Off: Offset + Display,
-{
-    /// Makes a new `Formatter` value out of local date and time and UTC offset.
-    #[must_use]
-    pub fn new2(
-        date: Option<NaiveDate>,
-        time: Option<NaiveTime>,
-        offset: Option<Off>,
-        items: &'a [Item<'a>],
-    ) -> Formatter<&'a [Item<'a>], Off> {
-        Formatter { date, time, offset, items, locale: default_locale() }
-    }
-
-    /// TODO
-    pub fn item_iter(&self) -> std::slice::Iter<'a, Item<'a>> {
-        self.items.iter()
-    }
 }
 
 impl<'a, I, B, Off> Formatter<I, Off>

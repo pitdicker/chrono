@@ -62,7 +62,7 @@ pub use formatting::{format, format_item, DelayedFormat};
 pub use formatting::{format_item_localized, format_localized};
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) use formatting::{write_rfc2822, write_rfc3339};
-pub use formatting::{Formatter, FormattingSpec};
+pub use formatting::{Formatter, FormattingSpec, ItemIter};
 #[cfg(feature = "unstable-locales")]
 pub use locales::Locale;
 #[cfg(not(feature = "unstable-locales"))]

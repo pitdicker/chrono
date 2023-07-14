@@ -1,16 +1,16 @@
 use super::NaiveDateTime;
-use crate::format::{Formatter, FormattingSpec, ParseError, StrftimeItems};
+use crate::format::{Formatter, FormattingSpec, ParseError, ItemIter};
 use crate::oldtime::Duration;
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::utils::assert_display_eq;
 use crate::NaiveDate;
 use crate::{Datelike, FixedOffset, Utc};
 
-fn format(
+fn format<'a>(
     dt: NaiveDateTime,
-    fmt_str: &str,
-) -> Result<Formatter<StrftimeItems<'_>, Utc>, ParseError> {
-    let formatter = FormattingSpec::<_, NaiveDateTime>::from(StrftimeItems::new(fmt_str))?;
+    fmt_str: &'a str,
+) -> Result<Formatter<ItemIter<'a>, Utc>, ParseError> {
+    let formatter = FormattingSpec::<NaiveDateTime>::from_strftime(fmt_str)?;
     Ok(dt.format_with(&formatter))
 }
 

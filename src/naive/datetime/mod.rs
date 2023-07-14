@@ -12,7 +12,7 @@ use core::{fmt, str};
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
+use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems, ItemIter};
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::format::{DelayedFormat, BAD_FORMAT};
 use crate::format::{Fixed, Formatter, FormattingSpec, Item, Numeric, Pad};
@@ -829,27 +829,11 @@ impl NaiveDateTime {
     }
 
     /// Format using a [`FormattingSpec`] created with [`NaiveDateTime::formatter`].
-    pub fn format_with<'a, I, J, B>(&self, formatter: &FormattingSpec<I, Self>) -> Formatter<J, Utc>
-    where
-        I: IntoIterator<Item = B, IntoIter = J> + Clone,
-        J: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        #[cfg(not(feature = "unstable-locales"))]
-        return Formatter::new(
-            Some(self.date()),
-            Some(self.time()),
-            None,
-            formatter.items.clone().into_iter(),
-        );
-        #[cfg(feature = "unstable-locales")]
-        return Formatter::new_with_locale(
-            Some(self.date()),
-            Some(self.time()),
-            None,
-            formatter.items.clone().into_iter(),
-            formatter.locale,
-        );
+    pub fn format_with<'a>(
+        &self,
+        formatter: &'a FormattingSpec<Self>,
+    ) -> Formatter<ItemIter<'a>, Utc> {
+        formatter.formatter(Some(self.date()), Some(self.time()), None)
     }
 
     /// Format the date and time with the specified format string to a `String`.

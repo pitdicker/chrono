@@ -1,5 +1,5 @@
 use super::DateTime;
-use crate::format::{FormattingSpec, StrftimeItems};
+use crate::format::{FormattingSpec};
 use crate::naive::{NaiveDate, NaiveTime};
 use crate::offset::{FixedOffset, TimeZone, Utc};
 #[cfg(feature = "clock")]
@@ -737,21 +737,21 @@ fn test_datetime_format_alignment() {
         Utc.with_ymd_and_hms(2007, 1, 2, 12, 34, 56).unwrap().with_nanosecond(123456789).unwrap();
 
     // Item::Literal
-    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%%")).unwrap();
+    let formatter = FormattingSpec::<DateTime<Utc>>::from_strftime("%%").unwrap();
     let percent = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("   %"), "{:>4}", percent).unwrap();
     write!(&mut WriteCompare::new("%   "), "{:<4}", percent).unwrap();
     write!(&mut WriteCompare::new(" %  "), "{:^4}", percent).unwrap();
 
     // Item::Numeric
-    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Y")).unwrap();
+    let formatter = FormattingSpec::<DateTime<Utc>>::from_strftime("%Y").unwrap();
     let year = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("——2007"), "{:—>6}", year).unwrap();
     write!(&mut WriteCompare::new("2007——"), "{:—<6}", year).unwrap();
     write!(&mut WriteCompare::new("—2007—"), "{:—^6}", year).unwrap();
 
     // Item::Fixed
-    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Z")).unwrap();
+    let formatter = FormattingSpec::<DateTime<Utc>>::from_strftime("%Z").unwrap();
     let tz = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("  UTC"), "{:>5}", tz).unwrap();
     write!(&mut WriteCompare::new("UTC  "), "{:<5}", tz).unwrap();
@@ -759,14 +759,14 @@ fn test_datetime_format_alignment() {
 
     // [Item::Numeric, Item::Space, Item::Literal, Item::Space, Item::Numeric]
     let formatter =
-        FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Y %B %d")).unwrap();
+        FormattingSpec::<DateTime<Utc>>::from_strftime("%Y %B %d").unwrap();
     let ymd = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("  2007 January 02"), "{:>17}", ymd).unwrap();
     write!(&mut WriteCompare::new("2007 January 02  "), "{:<17}", ymd).unwrap();
     write!(&mut WriteCompare::new(" 2007 January 02 "), "{:^17}", ymd).unwrap();
 
     // Truncated
-    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%T%.6f")).unwrap();
+    let formatter = FormattingSpec::<DateTime<Utc>>::from_strftime("%T%.6f").unwrap();
     let time = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("12:34:56.1234"), "{:.13}", time).unwrap();
 }
@@ -787,8 +787,8 @@ fn test_const_format_with() {
         Item::Literal(":"),
         Item::Numeric(Numeric::Second, Pad::Zero),
     ];
-    const FORMAT_SPEC: FormattingSpec<&[Item<'_>], DateTime<Utc>> =
-        match FormattingSpec::<_, DateTime<Utc>>::from_slice(FORMAT_ITEMS) {
+    const FORMAT_SPEC: FormattingSpec<DateTime<Utc>> =
+        match FormattingSpec::<DateTime<Utc>>::from_slice(FORMAT_ITEMS) {
             Ok(spec) => spec,
             Err(_) => panic!(),
         };

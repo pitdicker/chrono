@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "unstable-locales")]
 use crate::format::Locale;
-use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
+use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems, ItemIter};
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::format::{DelayedFormat, BAD_FORMAT};
 use crate::format::{Fixed, Formatter, FormattingSpec, Item};
@@ -773,32 +773,15 @@ where
     Tz::Offset: fmt::Display,
 {
     /// Format using a [`FormattingSpec`] created with [`DateTime::formatter`].
-    pub fn format_with<'a, I, J, B, Tz2>(
+    pub fn format_with<'a, Tz2>(
         &self,
-        formatter: &FormattingSpec<I, DateTime<Tz2>>,
-    ) -> Formatter<J, Tz::Offset>
+        formatter: &'a FormattingSpec<DateTime<Tz2>>,
+    ) -> Formatter<ItemIter<'a>, Tz::Offset>
     where
-        I: IntoIterator<Item = B, IntoIter = J> + Clone,
-        J: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
         Tz2: TimeZone,
     {
         let naive = self.naive_local();
-        #[cfg(not(feature = "unstable-locales"))]
-        return Formatter::new(
-            Some(naive.date()),
-            Some(naive.time()),
-            Some(self.offset().clone()),
-            formatter.items.clone().into_iter(),
-        );
-        #[cfg(feature = "unstable-locales")]
-        return Formatter::new_with_locale(
-            Some(naive.date()),
-            Some(naive.time()),
-            Some(self.offset().clone()),
-            formatter.items.clone().into_iter(),
-            formatter.locale,
-        );
+        formatter.formatter(Some(naive.date()), Some(naive.time()), Some(self.offset().clone()))
     }
 
     /// Format the date and time with the specified format string to a `String`.
@@ -922,10 +905,8 @@ where
 
 impl DateTime<Utc> {
     /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s.
-    pub const fn formatter<'a>(
-        items: &'a [Item<'a>],
-    ) -> Result<FormattingSpec<&'a [Item<'a>], Self>, ParseError> {
-        FormattingSpec::<_, Self>::from_slice(items)
+    pub const fn formatter<'a>(items: &'a [Item<'a>]) -> Result<FormattingSpec<Self>, ParseError> {
+        FormattingSpec::<Self>::from_slice(items)
     }
 
     /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s,

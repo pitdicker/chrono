@@ -671,7 +671,7 @@ mod tests {
     use super::StrftimeItems;
     use crate::format::Item::{self, Literal, Space};
     use crate::format::{fixed, internal_fixed, num, num0, nums};
-    use crate::format::{Fixed, Formatter, FormattingSpec, InternalInternal, Numeric::*};
+    use crate::format::{Fixed, Formatter, FormattingSpec, InternalInternal, Numeric::*, ItemIter};
     #[cfg(feature = "unstable-locales")]
     use crate::format::{Locale, ParseError};
     use crate::utils::assert_display_eq;
@@ -737,16 +737,15 @@ mod tests {
             )
             .unwrap();
 
-        fn format<Tz>(
+        fn format<'a, Tz>(
             dt: DateTime<Tz>,
-            fmt_str: &'static str,
-        ) -> Formatter<StrftimeItems<'_>, Tz::Offset>
+            fmt_str: &'a str,
+        ) -> Formatter<ItemIter<'a>, Tz::Offset>
         where
             Tz: TimeZone,
             Tz::Offset: core::fmt::Display,
         {
-            let formatter =
-                FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new(fmt_str)).unwrap();
+            let formatter = FormattingSpec::<DateTime<Utc>>::from_strftime(fmt_str).unwrap();
             dt.format_with(&formatter)
         }
 
@@ -902,7 +901,7 @@ mod tests {
     /// See <https://github.com/chronotope/chrono/issues/1139>.
     #[test]
     fn test_parse_only_timezone_offset_permissive_no_panic() {
-        assert!(FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%#z")).is_err());
+        assert!(FormattingSpec::<DateTime<Utc>>::from_strftime("%#z").is_err());
     }
 
     #[test]
