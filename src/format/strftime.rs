@@ -230,7 +230,7 @@ impl<'a> StrftimeItems<'a> {
     ///
     /// Note: `StrftimeItems::new_with_locale` only localizes the *format*. You usually want to
     /// combine it with other locale-aware methods such as
-    /// [`DateTime::format_localized_with_items`] to get things like localized month or day names.
+    /// [`DateTime::formatter_localized`] to get things like localized month or day names.
     ///
     /// The `%x` formatting specifier will use the local date format, `%X` the local time format,
     ///  and `%c` the local format for date and time.
@@ -240,7 +240,7 @@ impl<'a> StrftimeItems<'a> {
     /// See the [`format::strftime` module](crate::format::strftime) for all supported formatting
     /// specifiers.
     ///
-    ///  [`DateTime::format_localized_with_items`]: crate::DateTime::format_localized_with_items
+    ///  [`DateTime::formatter_localized`]: crate::DateTime::formatter_localized
     ///
     /// # Errors
     ///
