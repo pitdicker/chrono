@@ -1,12 +1,20 @@
 use super::NaiveDateTime;
+use crate::format::{Formatter, FormattingSpec, ParseError, StrftimeItems};
 use crate::oldtime::Duration;
 #[cfg(any(feature = "alloc", feature = "std"))]
 use crate::utils::assert_display_eq;
 use crate::NaiveDate;
 use crate::{Datelike, FixedOffset, Utc};
 
+fn format(
+    dt: NaiveDateTime,
+    fmt_str: &str,
+) -> Result<Formatter<StrftimeItems<'_>, Utc>, ParseError> {
+    let formatter = FormattingSpec::<_, NaiveDateTime>::from(StrftimeItems::new(fmt_str))?;
+    Ok(dt.format_with(&formatter))
+}
+
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))] // formatting requires allocations
 fn test_datetime_from_timestamp_millis() {
     let valid_map = [
         (1662921288000, "2022-09-11 18:34:48.000000000"),
@@ -22,7 +30,7 @@ fn test_datetime_from_timestamp_millis() {
     for (timestamp_millis, _formatted) in valid_map.iter().copied() {
         let naive_datetime = NaiveDateTime::from_timestamp_millis(timestamp_millis);
         assert_eq!(timestamp_millis, naive_datetime.unwrap().timestamp_millis());
-        assert_display_eq(naive_datetime.unwrap().format("%F %T%.9f"), _formatted);
+        assert_display_eq(format(naive_datetime.unwrap(), "%F %T%.9f").unwrap(), _formatted);
     }
 
     let invalid = [i64::MAX, i64::MIN];
@@ -44,7 +52,6 @@ fn test_datetime_from_timestamp_millis() {
 }
 
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))] // formatting requires allocations
 fn test_datetime_from_timestamp_micros() {
     let valid_map = [
         (1662921288000000, "2022-09-11 18:34:48.000000000"),
@@ -60,7 +67,7 @@ fn test_datetime_from_timestamp_micros() {
     for (timestamp_micros, _formatted) in valid_map.iter().copied() {
         let naive_datetime = NaiveDateTime::from_timestamp_micros(timestamp_micros);
         assert_eq!(timestamp_micros, naive_datetime.unwrap().timestamp_micros());
-        assert_display_eq(naive_datetime.unwrap().format("%F %T%.9f"), _formatted);
+        assert_display_eq(format(naive_datetime.unwrap(), "%F %T%.9f").unwrap(), _formatted);
     }
 
     let invalid = [i64::MAX, i64::MIN];
@@ -291,18 +298,17 @@ fn test_datetime_parse_from_str() {
 }
 
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))]
 fn test_datetime_format() {
     let dt = NaiveDate::from_ymd_opt(2010, 9, 8).unwrap().and_hms_milli_opt(7, 6, 54, 321).unwrap();
-    assert_display_eq(dt.format("%c"), "Wed Sep  8 07:06:54 2010");
-    assert_display_eq(dt.format("%s"), "1283929614");
-    assert_display_eq(dt.format("%t%n%%%n%t"), "\t\n%\n\t");
+    assert_display_eq(format(dt, "%c").unwrap(), "Wed Sep  8 07:06:54 2010");
+    assert_display_eq(format(dt, "%s").unwrap(), "1283929614");
+    assert_display_eq(format(dt, "%t%n%%%n%t").unwrap(), "\t\n%\n\t");
 
     // a horror of leap second: coming near to you.
     let dt =
         NaiveDate::from_ymd_opt(2012, 6, 30).unwrap().and_hms_milli_opt(23, 59, 59, 1_000).unwrap();
-    assert_display_eq(dt.format("%c"), "Sat Jun 30 23:59:60 2012");
-    assert_display_eq(dt.format("%s"), "1341100799"); // not 1341100800, it's intentional.
+    assert_display_eq(format(dt, "%c").unwrap(), "Sat Jun 30 23:59:60 2012");
+    assert_display_eq(format(dt, "%s").unwrap(), "1341100799"); // not 1341100800, it's intentional.
 }
 
 #[test]

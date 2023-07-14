@@ -12,10 +12,10 @@ use core::{fmt, str};
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::format::DelayedFormat;
 use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
-use crate::format::{Fixed, Item, Numeric, Pad};
+#[cfg(any(feature = "alloc", feature = "std"))]
+use crate::format::{DelayedFormat, BAD_FORMAT};
+use crate::format::{Fixed, Formatter, FormattingSpec, Item, Numeric, Pad};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
 use crate::offset::Utc;
 use crate::oldtime::Duration as OldDuration;
@@ -828,37 +828,89 @@ impl NaiveDateTime {
         self.date.signed_duration_since(rhs.date) + self.time.signed_duration_since(rhs.time)
     }
 
+    /// Format using a [`FormattingSpec`] created with [`NaiveDateTime::formatter`].
+    pub fn format_with<'a, I, J, B>(&self, formatter: &FormattingSpec<I, Self>) -> Formatter<J, Utc>
+    where
+        I: IntoIterator<Item = B, IntoIter = J> + Clone,
+        J: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        #[cfg(not(feature = "unstable-locales"))]
+        return Formatter::new(
+            Some(self.date()),
+            Some(self.time()),
+            None,
+            formatter.items.clone().into_iter(),
+        );
+        #[cfg(feature = "unstable-locales")]
+        return Formatter::new_with_locale(
+            Some(self.date()),
+            Some(self.time()),
+            None,
+            formatter.items.clone().into_iter(),
+            formatter.locale,
+        );
+    }
+
+    /// Format the date and time with the specified format string to a `String`.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
+    pub fn format_to_string(&self, fmt_str: &str) -> Result<String, ParseError> {
+        let formatter = Formatter::<_, Utc>::new(
+            Some(self.date()),
+            Some(self.time()),
+            None,
+            StrftimeItems::new(fmt_str),
+        );
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
+    /// Formats the combined date and time with the specified format string and
+    /// locale to a `String`..
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
+    #[cfg_attr(
+        docsrs,
+        doc(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))
+    )]
+    pub fn format_localized_to_string<'a>(
+        &self,
+        fmt_str: &'a str,
+        locale: Locale,
+    ) -> Result<String, ParseError> {
+        let formatter = Formatter::<_, Utc>::new_with_locale(
+            Some(self.date()),
+            Some(self.time()),
+            None,
+            StrftimeItems::new(fmt_str),
+            locale,
+        );
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
     /// Formats the combined date and time with the specified formatting items.
-    /// Otherwise it is the same as the ordinary [`format`](#method.format) method.
-    ///
-    /// The `Iterator` of items should be `Clone`able,
-    /// since the resulting `DelayedFormat` value may be formatted multiple times.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chrono::NaiveDate;
-    /// use chrono::format::strftime::StrftimeItems;
-    ///
-    /// let fmt = StrftimeItems::new("%Y-%m-%d %H:%M:%S");
-    /// let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(dt.format_with_items(fmt.clone()).to_string(), "2015-09-05 23:56:04");
-    /// assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(),    "2015-09-05 23:56:04");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```
-    /// # use chrono::NaiveDate;
-    /// # use chrono::format::strftime::StrftimeItems;
-    /// # let fmt = StrftimeItems::new("%Y-%m-%d %H:%M:%S").clone();
-    /// # let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", dt.format_with_items(fmt)), "2015-09-05 23:56:04");
-    /// ```
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use NaiveDateTime::format_with() instead")]
     pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
     where
         I: Iterator<Item = B> + Clone,
@@ -867,43 +919,28 @@ impl NaiveDateTime {
         DelayedFormat::new(Some(self.date), Some(self.time), items)
     }
 
-    /// Formats the combined date and time with the specified format string.
-    /// See the [`format::strftime` module](../format/strftime/index.html)
-    /// on the supported escape sequences.
+    /// Formats the date and time with the specified format string.
     ///
-    /// This returns a `DelayedFormat`,
-    /// which gets converted to a string only when actual formatting happens.
-    /// You may use the `to_string` method to get a `String`,
-    /// or just feed it into `print!` and other formatting macros.
-    /// (In this way it avoids the redundant memory allocation.)
+    /// # Deprecated
     ///
-    /// A wrong format string does *not* issue an error immediately.
-    /// Rather, converting or formatting the `DelayedFormat` fails.
-    /// You are recommended to immediately use `DelayedFormat` for this reason.
+    /// Use [`format_to_string`](#method.format_to_string) or [`format_with`](#method.format_with)
+    /// instead.
     ///
-    /// # Example
+    /// # Errors/panics
     ///
-    /// ```
-    /// use chrono::NaiveDate;
+    /// The `Display` implementation of the returned `DelayedFormat` can return an error if the
+    /// format string is invalid. This goes against the [contract for `Display`][1], and causes a
+    /// panic when used in combination with [`to_string`], [`println!`] and [`format!`].
     ///
-    /// let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(), "2015-09-05 23:56:04");
-    /// assert_eq!(dt.format("around %l %p on %b %-d").to_string(), "around 11 PM on Sep 5");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```
-    /// # use chrono::NaiveDate;
-    /// # let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", dt.format("%Y-%m-%d %H:%M:%S")), "2015-09-05 23:56:04");
-    /// assert_eq!(format!("{}", dt.format("around %l %p on %b %-d")), "around 11 PM on Sep 5");
-    /// ```
+    /// [1]: https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits
+    /// [`to_string`]: ToString::to_string
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use NaiveDateTime::format_to_string() instead")]
     pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
+        #[allow(deprecated)]
         self.format_with_items(StrftimeItems::new(fmt))
     }
 
