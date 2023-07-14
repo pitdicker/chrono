@@ -943,7 +943,7 @@ impl DateTime<Utc> {
         J: Iterator<Item = B> + Clone,
         B: Borrow<Item<'a>>,
     {
-        FormattingSpec::localized_from(items, locale)
+        FormattingSpec::<_, DateTime<Utc>>::localized_from(items, locale)
     }
 }
 
