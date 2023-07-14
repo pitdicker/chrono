@@ -922,13 +922,10 @@ where
 
 impl DateTime<Utc> {
     /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s.
-    pub fn formatter<'a, I, J, B>(items: I) -> Result<FormattingSpec<J, Self>, ParseError>
-    where
-        I: IntoIterator<Item = B, IntoIter = J>,
-        J: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        FormattingSpec::from(items)
+    pub const fn formatter<'a>(
+        items: &'a [Item<'a>],
+    ) -> Result<FormattingSpec<&'a [Item<'a>], Self>, ParseError> {
+        FormattingSpec::<_, Self>::from_slice(items)
     }
 
     /// Create a new `FormattingSpec` that can be used to format multiple `DateTime`s,

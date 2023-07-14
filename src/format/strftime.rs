@@ -671,7 +671,7 @@ mod tests {
     use super::StrftimeItems;
     use crate::format::Item::{self, Literal, Space};
     use crate::format::{fixed, internal_fixed, num, num0, nums};
-    use crate::format::{Fixed, Formatter, InternalInternal, Numeric::*};
+    use crate::format::{Fixed, Formatter, FormattingSpec, InternalInternal, Numeric::*};
     #[cfg(feature = "unstable-locales")]
     use crate::format::{Locale, ParseError};
     use crate::utils::assert_display_eq;
@@ -745,7 +745,8 @@ mod tests {
             Tz: TimeZone,
             Tz::Offset: core::fmt::Display,
         {
-            let formatter = DateTime::formatter(StrftimeItems::new(fmt_str)).unwrap();
+            let formatter =
+                FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new(fmt_str)).unwrap();
             dt.format_with(&formatter)
         }
 
@@ -901,7 +902,7 @@ mod tests {
     /// See <https://github.com/chronotope/chrono/issues/1139>.
     #[test]
     fn test_parse_only_timezone_offset_permissive_no_panic() {
-        assert!(DateTime::formatter(StrftimeItems::new("%#z")).is_err());
+        assert!(FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%#z")).is_err());
     }
 
     #[test]

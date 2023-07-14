@@ -737,35 +737,36 @@ fn test_datetime_format_alignment() {
         Utc.with_ymd_and_hms(2007, 1, 2, 12, 34, 56).unwrap().with_nanosecond(123456789).unwrap();
 
     // Item::Literal
-    let formatter = DateTime::formatter(StrftimeItems::new("%%")).unwrap();
+    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%%")).unwrap();
     let percent = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("   %"), "{:>4}", percent).unwrap();
     write!(&mut WriteCompare::new("%   "), "{:<4}", percent).unwrap();
     write!(&mut WriteCompare::new(" %  "), "{:^4}", percent).unwrap();
 
     // Item::Numeric
-    let formatter = DateTime::formatter(StrftimeItems::new("%Y")).unwrap();
+    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Y")).unwrap();
     let year = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("——2007"), "{:—>6}", year).unwrap();
     write!(&mut WriteCompare::new("2007——"), "{:—<6}", year).unwrap();
     write!(&mut WriteCompare::new("—2007—"), "{:—^6}", year).unwrap();
 
     // Item::Fixed
-    let formatter = DateTime::formatter(StrftimeItems::new("%Z")).unwrap();
+    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Z")).unwrap();
     let tz = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("  UTC"), "{:>5}", tz).unwrap();
     write!(&mut WriteCompare::new("UTC  "), "{:<5}", tz).unwrap();
     write!(&mut WriteCompare::new(" UTC "), "{:^5}", tz).unwrap();
 
     // [Item::Numeric, Item::Space, Item::Literal, Item::Space, Item::Numeric]
-    let formatter = DateTime::formatter(StrftimeItems::new("%Y %B %d")).unwrap();
+    let formatter =
+        FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%Y %B %d")).unwrap();
     let ymd = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("  2007 January 02"), "{:>17}", ymd).unwrap();
     write!(&mut WriteCompare::new("2007 January 02  "), "{:<17}", ymd).unwrap();
     write!(&mut WriteCompare::new(" 2007 January 02 "), "{:^17}", ymd).unwrap();
 
     // Truncated
-    let formatter = DateTime::formatter(StrftimeItems::new("%T%.6f")).unwrap();
+    let formatter = FormattingSpec::<_, DateTime<Utc>>::from(StrftimeItems::new("%T%.6f")).unwrap();
     let time = datetime.format_with(&formatter);
     write!(&mut WriteCompare::new("12:34:56.1234"), "{:.13}", time).unwrap();
 }
