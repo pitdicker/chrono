@@ -961,6 +961,7 @@ where
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use DateTime::format_with() instead")]
     pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
     where
         I: Iterator<Item = B> + Clone,
@@ -970,63 +971,32 @@ where
         DelayedFormat::new_with_offset(Some(local.date()), Some(local.time()), &self.offset, items)
     }
 
-    /// Formats the combined date and time per the specified format string.
+    /// Formats the date and time with the specified format string.
     ///
-    /// See the [`crate::format::strftime`] module for the supported escape sequences.
+    /// # Deprecated
     ///
-    /// # Example
-    /// ```rust
-    /// use chrono::prelude::*;
+    /// Use [`format_to_string`](#method.format_to_string) or [`format_with`](#method.format_with)
+    /// instead.
     ///
-    /// let date_time: DateTime<Utc> = Utc.with_ymd_and_hms(2017, 04, 02, 12, 50, 32).unwrap();
-    /// let formatted = format!("{}", date_time.format("%d/%m/%Y %H:%M"));
-    /// assert_eq!(formatted, "02/04/2017 12:50");
-    /// ```
+    /// # Errors/panics
+    ///
+    /// The `Display` implementation of the returned `DelayedFormat` can return an error if the
+    /// format string is invalid. This goes against the [contract for `Display`][1], and causes a
+    /// panic when used in combination with [`to_string`], [`println!`] and [`format!`].
+    ///
+    /// [1]: https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits
+    /// [`to_string`]: ToString::to_string
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(
+        since = "0.4.27",
+        note = "Use DateTime::format_to_string() or DateTime::format_with() instead"
+    )]
     pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
+        #[allow(deprecated)]
         self.format_with_items(StrftimeItems::new(fmt))
-    }
-
-    /// Formats the combined date and time with the specified formatting items and locale.
-    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized_with_items<'a, I, B>(
-        &self,
-        items: I,
-        locale: Locale,
-    ) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        let local = self.naive_local();
-        DelayedFormat::new_with_offset_and_locale(
-            Some(local.date()),
-            Some(local.time()),
-            &self.offset,
-            items,
-            locale,
-        )
-    }
-
-    /// Formats the combined date and time per the specified format string and
-    /// locale.
-    ///
-    /// See the [`crate::format::strftime`] module on the supported escape
-    /// sequences.
-    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized<'a>(
-        &self,
-        fmt: &'a str,
-        locale: Locale,
-    ) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_localized_with_items(StrftimeItems::new_with_locale(fmt, locale), locale)
     }
 }
 

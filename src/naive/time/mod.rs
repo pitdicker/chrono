@@ -871,40 +871,11 @@ impl NaiveTime {
     }
 
     /// Formats the time with the specified formatting items.
-    /// Otherwise it is the same as the ordinary [`format`](#method.format) method.
-    ///
-    /// The `Iterator` of items should be `Clone`able,
-    /// since the resulting `DelayedFormat` value may be formatted multiple times.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chrono::NaiveTime;
-    /// use chrono::format::strftime::StrftimeItems;
-    ///
-    /// let items = StrftimeItems::new("%H:%M:%S").parse()?;
-    /// let fmt = NaiveTime::formatter(&items)?;
-    /// let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(t.format_with(&fmt).to_string(), "23:56:04");
-    /// assert_eq!(t.format_to_string("%H:%M:%S")?, "23:56:04");
-    /// # Ok::<(), chrono::ParseError>(())
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```
-    /// # use chrono::NaiveTime;
-    /// # use chrono::format::strftime::StrftimeItems;
-    /// # let items = StrftimeItems::new("%H:%M:%S").parse()?;
-    /// # let fmt = NaiveTime::formatter(&items)?;
-    /// # let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", t.format_with(&fmt)), "23:56:04");
-    /// # Ok::<(), chrono::ParseError>(())
-    /// ```
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use NaiveTime::format_with() instead")]
     pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
     where
         I: Iterator<Item = B> + Clone,
@@ -914,44 +885,27 @@ impl NaiveTime {
     }
 
     /// Formats the time with the specified format string.
-    /// See the [`format::strftime` module](../format/strftime/index.html)
-    /// on the supported escape sequences.
     ///
-    /// This returns a `DelayedFormat`,
-    /// which gets converted to a string only when actual formatting happens.
-    /// You may use the `to_string` method to get a `String`,
-    /// or just feed it into `print!` and other formatting macros.
-    /// (In this way it avoids the redundant memory allocation.)
+    /// # Deprecated
     ///
-    /// A wrong format string does *not* issue an error immediately.
-    /// Rather, converting or formatting the `DelayedFormat` fails.
-    /// You are recommended to immediately use `DelayedFormat` for this reason.
+    /// Use [`format_to_string`](#method.format_to_string) or [`format_with`](#method.format_with)
+    /// instead.
     ///
-    /// # Example
+    /// # Errors/panics
     ///
-    /// ```
-    /// use chrono::NaiveTime;
+    /// The `Display` implementation of the returned `DelayedFormat` can return an error if the
+    /// format string is invalid. This goes against the [contract for `Display`][1], and causes a
+    /// panic when used in combination with [`to_string`], [`println!`] and [`format!`].
     ///
-    /// let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
-    /// assert_eq!(t.format("%H:%M:%S").to_string(), "23:56:04");
-    /// assert_eq!(t.format("%H:%M:%S%.6f").to_string(), "23:56:04.012345");
-    /// assert_eq!(t.format("%-I:%M %p").to_string(), "11:56 PM");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```
-    /// # use chrono::NaiveTime;
-    /// # let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
-    /// assert_eq!(format!("{}", t.format("%H:%M:%S")), "23:56:04");
-    /// assert_eq!(format!("{}", t.format("%H:%M:%S%.6f")), "23:56:04.012345");
-    /// assert_eq!(format!("{}", t.format("%-I:%M %p")), "11:56 PM");
-    /// ```
+    /// [1]: https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits
+    /// [`to_string`]: ToString::to_string
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[inline]
     #[must_use]
+    #[deprecated(since = "0.4.27", note = "Use DateTime::format_to_string() instead")]
     pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
+        #[allow(deprecated)]
         self.format_with_items(StrftimeItems::new(fmt))
     }
 
