@@ -398,6 +398,7 @@ formatting_spec_from_impls!(NaiveDate, DateTime<Utc>);
 formatting_spec_from_impls!(NaiveDateTime, DateTime<Utc>);
 
 /// A *temporary* object which can be used as an argument to [`format!`] or others.
+/// This is normally constructed via the `format_with` methods of each date and time type.
 #[derive(Debug)]
 pub struct Formatter<I, Off> {
     /// The date view, if any.

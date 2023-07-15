@@ -15,14 +15,14 @@ use core::{fmt, hash, str};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::duration::Duration as OldDuration;
-#[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
+#[cfg(all(feature = "unstable-locales"))]
 use crate::format::Locale;
 use crate::format::{
-    parse, parse_and_remainder, parse_rfc3339, Fixed, Item, ParseError, ParseResult, Parsed,
-    StrftimeItems, TOO_LONG,
+    parse, parse_and_remainder, parse_rfc3339, Fixed, Formatter, FormattingSpec, Item, ParseError,
+    ParseResult, Parsed, StrftimeItems, TOO_LONG,
 };
 #[cfg(any(feature = "alloc", feature = "std"))]
-use crate::format::{write_rfc3339, DelayedFormat};
+use crate::format::{write_rfc3339, DelayedFormat, BAD_FORMAT};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveDateTime, NaiveTime};
 #[cfg(feature = "clock")]
 use crate::offset::Local;
@@ -866,6 +866,96 @@ impl<Tz: TimeZone> DateTime<Tz>
 where
     Tz::Offset: fmt::Display,
 {
+    /// Format using a [`FormattingSpec`] created with [`DateTime::formatter`].
+    pub fn format_with<'a, I, J, B, Tz2>(
+        &self,
+        formatter: &FormattingSpec<DateTime<Tz2>, I>,
+    ) -> Formatter<J, Tz::Offset>
+    where
+        I: IntoIterator<Item = B, IntoIter = J> + Clone,
+        J: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+        Tz2: TimeZone,
+    {
+        let naive = self.naive_local();
+        formatter.formatter(Some(naive.date()), Some(naive.time()), Some(self.offset().clone()))
+    }
+
+    /// Format the date and time with the specified format string to a `String`.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chrono::{TimeZone, Utc};
+    ///
+    /// let dt = Utc.with_ymd_and_hms(2015, 9, 5, 23, 56, 4).unwrap();
+    /// assert_eq!(
+    ///     dt.format_to_string("%Y-%m-%d %H:%M:%S %Z"),
+    ///     Ok("2015-09-05 23:56:04 UTC".to_owned())
+    /// );
+    /// assert_eq!(
+    ///     dt.format_to_string("%Y-%m-%d %H:%M:%S %:z"),
+    ///     Ok("2015-09-05 23:56:04 +00:00".to_owned())
+    /// );
+    /// assert_eq!(
+    ///     dt.format_to_string("around %l %p on %b %-d"),
+    ///     Ok("around 11 PM on Sep 5".to_owned())
+    /// );
+    /// ```
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
+    pub fn format_to_string(&self, fmt_str: &str) -> Result<String, ParseError> {
+        let naive = self.naive_local();
+        let formatter = Formatter::new(
+            Some(naive.date()),
+            Some(naive.time()),
+            Some(self.offset().clone()),
+            StrftimeItems::new(fmt_str),
+        );
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
+    /// Formats the combined date and time with the specified format string and
+    /// locale to a `String`.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std"))))
+    )]
+    pub fn format_to_string_localized(
+        &self,
+        fmt_str: &str,
+        locale: Locale,
+    ) -> Result<String, ParseError> {
+        let naive = self.naive_local();
+        let formatter = Formatter::new_with_locale(
+            Some(naive.date()),
+            Some(naive.time()),
+            Some(self.offset().clone()),
+            StrftimeItems::new_with_locale(fmt_str, locale),
+            locale,
+        );
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
     /// Formats the combined date and time with the specified formatting items.
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
@@ -937,6 +1027,25 @@ where
         locale: Locale,
     ) -> DelayedFormat<StrftimeItems<'a>> {
         self.format_localized_with_items(StrftimeItems::new_with_locale(fmt, locale), locale)
+    }
+}
+
+impl DateTime<Utc> {
+    /// Create a new [`FormattingSpec`] that can be used to format multiple `DateTime`'s.
+    pub const fn formatter<'a>(
+        items: &'a [Item<'a>],
+    ) -> Result<FormattingSpec<Self, &'a [Item<'a>]>, ParseError> {
+        FormattingSpec::<Self, _>::from_slice(items)
+    }
+
+    /// Create a new [`FormattingSpec`] that can be used to format multiple `DateTime`'s,
+    /// localized for `locale`.
+    #[cfg(feature = "unstable-locales")]
+    pub const fn formatter_localized<'a>(
+        items: &'a [Item<'a>],
+        locale: Locale,
+    ) -> Result<FormattingSpec<Self, &'a [Item<'a>]>, ParseError> {
+        FormattingSpec::<Self, _>::from_slice_localized(items, locale)
     }
 }
 
