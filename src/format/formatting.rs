@@ -190,7 +190,9 @@ impl<'a, J, Tz: TimeZone> FormattingSpec<DateTime<Tz>, J> {
     }
 }
 
-impl<'a, Tz: TimeZone> FormattingSpec<DateTime<Tz>, &'a [Item<'a>]> {
+// TODO: once our MSRV >= 1.61 change this impl to take a generic `Tz` trait bound.
+// Trait bounds on const fn parameters were not supported before.
+impl<'a> FormattingSpec<DateTime<Utc>, &'a [Item<'a>]> {
     /// Creates a new `FormattingSpec` given a slice of [`Item`]'s.
     ///
     /// The difference with the more generic [`FormattingSpec::from_items`] is that `from_slice` is
@@ -257,6 +259,37 @@ impl<'a, Tz: TimeZone> FormattingSpec<DateTime<Tz>, &'a [Item<'a>]> {
     ///
     /// Returns an error if one of the formatting [`Item`]'s is for a value the input type doesn't
     /// have, such as an hour or an offset from UTC on a [`NaiveDate`] type.
+    #[cfg(feature = "unstable-locales")]
+    pub const fn from_slice_localized(
+        items: &'a [Item<'a>],
+        locale: Locale,
+    ) -> Result<Self, ParseError> {
+        let mut i = 0;
+        while i < items.len() {
+            if let Err(e) = items[i].check_fields(true, true, true, locale) {
+                return Err(e);
+            }
+            i += 1;
+        }
+        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+    }
+}
+
+impl<'a> FormattingSpec<DateTime<FixedOffset>, &'a [Item<'a>]> {
+    /// Creates a new `FormattingSpec` given a slice of [`Item`]'s.
+    pub const fn from_slice(items: &'a [Item<'a>]) -> Result<Self, ParseError> {
+        let locale = locales::default_locale();
+        let mut i = 0;
+        while i < items.len() {
+            if let Err(e) = items[i].check_fields(true, true, true, locale) {
+                return Err(e);
+            }
+            i += 1;
+        }
+        Ok(FormattingSpec { items, date_time_type: PhantomData, locale })
+    }
+
+    /// Creates a new `FormattingSpec` given a slice of [`Item`]'s and a `locale`.
     #[cfg(feature = "unstable-locales")]
     pub const fn from_slice_localized(
         items: &'a [Item<'a>],
