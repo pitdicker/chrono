@@ -3,8 +3,10 @@
 
 //! ISO 8601 time without timezone.
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
+use alloc::string::String;
 use core::borrow::Borrow;
+use core::fmt::Write;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 use core::{fmt, str};
@@ -13,14 +15,16 @@ use core::{fmt, str};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::duration::Duration as OldDuration;
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::format::DelayedFormat;
+#[cfg(feature = "unstable-locales")]
+use crate::format::Locale;
 use crate::format::{
-    parse, parse_and_remainder, write_hundreds, Fixed, Item, Numeric, Pad, ParseError, ParseResult,
-    Parsed, StrftimeItems,
+    parse, parse_and_remainder, write_hundreds, Fixed, Formatter, FormattingSpec, Item, Numeric,
+    Pad, ParseError, ParseResult, Parsed, StrftimeItems,
 };
-use crate::Timelike;
+#[cfg(any(feature = "alloc", feature = "std"))]
+use crate::format::{DelayedFormat, BAD_FORMAT};
 use crate::{expect, try_opt};
+use crate::{Timelike, Utc};
 
 #[cfg(feature = "rustc-serialize")]
 mod rustc_serialize;
@@ -750,6 +754,122 @@ impl NaiveTime {
         OldDuration::seconds(secs + adjust) + OldDuration::nanoseconds(frac)
     }
 
+    /// Create a new [`FormattingSpec`] that can be used to format multiple `NaiveTime`'s.
+    pub const fn formatter<'a>(
+        items: &'a [Item<'a>],
+    ) -> Result<FormattingSpec<Self, &'a [Item<'a>]>, ParseError> {
+        FormattingSpec::<Self, _>::from_slice(items)
+    }
+
+    /// Create a new [`FormattingSpec`] that can be used to format multiple `NaiveTime`'s,
+    /// localized for `locale`.
+    #[cfg(feature = "unstable-locales")]
+    pub const fn formatter_localized<'a>(
+        items: &'a [Item<'a>],
+        locale: Locale,
+    ) -> Result<FormattingSpec<Self, &'a [Item<'a>]>, ParseError> {
+        FormattingSpec::<Self, _>::from_slice_localized(items, locale)
+    }
+
+    /// Format using a [`FormattingSpec`] created with [`NaiveTime::formatter`].
+    ///
+    /// # Example
+    ///
+    #[cfg_attr(not(any(feature = "alloc", feature = "std")), doc = "```ignore")]
+    #[cfg_attr(any(feature = "alloc", feature = "std"), doc = "```rust")]
+    /// use chrono::NaiveTime;
+    /// use chrono::format::strftime::StrftimeItems;
+    ///
+    /// let items = StrftimeItems::new("%H:%M:%S").parse()?;
+    /// let fmt = NaiveTime::formatter(&items)?;
+    /// let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
+    /// assert_eq!(t.format_with(&fmt).to_string(), "23:56:04");
+    /// assert_eq!(t.format_to_string("%H:%M:%S")?, "23:56:04");
+    /// # Ok::<(), chrono::ParseError>(())
+    /// ```
+    ///
+    /// The resulting `DelayedFormat` can be formatted directly via the [`Display`] trait.
+    ///
+    #[cfg_attr(not(any(feature = "alloc", feature = "std")), doc = "```ignore")]
+    #[cfg_attr(any(feature = "alloc", feature = "std"), doc = "```rust")]
+    /// # use chrono::NaiveTime;
+    /// # use chrono::format::strftime::StrftimeItems;
+    /// # let items = StrftimeItems::new("%H:%M:%S").parse()?;
+    /// # let fmt = NaiveTime::formatter(&items)?;
+    /// # let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
+    /// assert_eq!(format!("{}", t.format_with(&fmt)), "23:56:04");
+    /// # Ok::<(), chrono::ParseError>(())
+    /// ```
+    ///
+    /// [`Display`]: core::fmt::Display
+    pub fn format_with<'a, I, J, B>(&self, formatter: &FormattingSpec<Self, I>) -> Formatter<J, Utc>
+    where
+        I: IntoIterator<Item = B, IntoIter = J> + Clone,
+        J: Iterator<Item = B> + Clone,
+        B: Borrow<Item<'a>>,
+    {
+        formatter.formatter(None, Some(*self), None)
+    }
+
+    /// Format a `NaiveTime` with the specified format string to a `String`.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chrono::NaiveTime;
+    ///
+    /// let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
+    /// assert_eq!(t.format_to_string("%H:%M:%S"), Ok("23:56:04".to_owned()));
+    /// assert_eq!(t.format_to_string("%H:%M:%S%.6f"), Ok("23:56:04.012345".to_owned()));
+    /// assert_eq!(t.format_to_string("%-I:%M %p"), Ok("11:56 PM".to_owned()));
+    /// ```
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
+    pub fn format_to_string(&self, fmt_str: &str) -> Result<String, ParseError> {
+        let formatter =
+            Formatter::<_, Utc>::new(None, Some(*self), None, StrftimeItems::new(fmt_str));
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
+    /// Formats a `NaiveTime` with the specified format string and locale to a `String`.
+    ///
+    /// See the [`format::strftime` module](crate::format::strftime) for the supported formatting
+    /// specifiers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format string is invalid.
+    #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std"))))
+    )]
+    pub fn format_to_string_localized(
+        &self,
+        fmt_str: &str,
+        locale: Locale,
+    ) -> Result<String, ParseError> {
+        let formatter = Formatter::<_, Utc>::new_with_locale(
+            None,
+            Some(*self),
+            None,
+            StrftimeItems::new_with_locale(fmt_str, locale),
+            locale,
+        );
+        let mut result = String::new();
+        write!(&mut result, "{}", &formatter).map_err(|_| BAD_FORMAT)?;
+        Ok(result)
+    }
+
     /// Formats the time with the specified formatting items.
     /// Otherwise it is the same as the ordinary [`format`](#method.format) method.
     ///
@@ -762,10 +882,12 @@ impl NaiveTime {
     /// use chrono::NaiveTime;
     /// use chrono::format::strftime::StrftimeItems;
     ///
-    /// let fmt = StrftimeItems::new("%H:%M:%S");
+    /// let items = StrftimeItems::new("%H:%M:%S").parse()?;
+    /// let fmt = NaiveTime::formatter(&items)?;
     /// let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(t.format_with_items(fmt.clone()).to_string(), "23:56:04");
-    /// assert_eq!(t.format("%H:%M:%S").to_string(),             "23:56:04");
+    /// assert_eq!(t.format_with(&fmt).to_string(), "23:56:04");
+    /// assert_eq!(t.format_to_string("%H:%M:%S")?, "23:56:04");
+    /// # Ok::<(), chrono::ParseError>(())
     /// ```
     ///
     /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
@@ -773,9 +895,11 @@ impl NaiveTime {
     /// ```
     /// # use chrono::NaiveTime;
     /// # use chrono::format::strftime::StrftimeItems;
-    /// # let fmt = StrftimeItems::new("%H:%M:%S").clone();
+    /// # let items = StrftimeItems::new("%H:%M:%S").parse()?;
+    /// # let fmt = NaiveTime::formatter(&items)?;
     /// # let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", t.format_with_items(fmt)), "23:56:04");
+    /// assert_eq!(format!("{}", t.format_with(&fmt)), "23:56:04");
+    /// # Ok::<(), chrono::ParseError>(())
     /// ```
     #[cfg(any(feature = "alloc", feature = "std"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
@@ -1325,7 +1449,6 @@ impl fmt::Debug for NaiveTime {
             (sec, self.frac)
         };
 
-        use core::fmt::Write;
         write_hundreds(f, hour as u8)?;
         f.write_char(':')?;
         write_hundreds(f, min as u8)?;
