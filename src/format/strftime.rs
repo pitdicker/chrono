@@ -696,10 +696,11 @@ mod tests {
     #[cfg(feature = "unstable-locales")]
     use crate::format::Locale;
     use crate::format::{
-        fixed, internal_fixed, num, num0, nums, Fixed, InternalInternal, Numeric::*,
+        fixed, internal_fixed, num, num0, nums, Fixed, FormattingSpec, InternalInternal, Numeric::*,
     };
+    use crate::{DateTime, Utc};
     #[cfg(any(feature = "alloc", feature = "std"))]
-    use crate::{DateTime, FixedOffset, NaiveDate, ParseError, TimeZone, Timelike, Utc};
+    use crate::{FixedOffset, NaiveDate, ParseError, TimeZone, Timelike};
 
     #[test]
     fn test_strftime_items() {
@@ -971,6 +972,15 @@ mod tests {
         Ok(())
     }
 
+    /// Ensure parsing a timestamp with the parse-only stftime formatter "%#z" does
+    /// not cause a panic.
+    ///
+    /// See <https://github.com/chronotope/chrono/issues/1139>.
+    #[test]
+    fn test_parse_only_timezone_offset_permissive_no_panic() {
+        assert!(FormattingSpec::<DateTime<Utc>, _>::from_items(StrftimeItems::new("%#z")).is_err());
+    }
+
     #[test]
     #[cfg(all(feature = "unstable-locales", any(feature = "alloc", feature = "std")))]
     fn test_strftime_docs_localized() -> Result<(), ParseError> {
@@ -1019,31 +1029,6 @@ mod tests {
         assert_eq!(nd.format_to_string_localized("%F", Locale::de_DE)?, "2001-07-08");
         assert_eq!(nd.format_to_string_localized("%v", Locale::de_DE)?, " 8-Jul-2001");
         Ok(())
-    }
-
-    /// Ensure parsing a timestamp with the parse-only stftime formatter "%#z" does
-    /// not cause a panic.
-    ///
-    /// See <https://github.com/chronotope/chrono/issues/1139>.
-    #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    fn test_parse_only_timezone_offset_permissive_no_panic() {
-        use crate::NaiveDate;
-        use crate::{FixedOffset, TimeZone};
-        use std::fmt::Write;
-
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2001, 7, 8)
-                    .unwrap()
-                    .and_hms_nano_opt(0, 34, 59, 1_026_490_708)
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let mut buf = String::new();
-        let _ = write!(buf, "{}", dt.format("%#z")).expect_err("parse-only formatter should fail");
     }
 
     #[test]
