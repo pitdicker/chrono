@@ -234,7 +234,7 @@ const OL_TO_MDL: &[u8; MAX_OL as usize + 1] = &[
 /// February 30, can still be represented. This allows the validation to be combined with the final
 /// table lookup, which is good for performance.
 #[derive(PartialEq, PartialOrd, Copy, Clone)]
-pub(super) struct Mdf(u32);
+pub(crate) struct Mdf(pub(crate) u32);
 
 impl Mdf {
     /// Makes a new `Mdf` value from month, day and `YearFlags`.
