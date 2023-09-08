@@ -479,6 +479,8 @@ pub use duration::Duration;
 #[cfg(feature = "std")]
 pub use duration::OutOfRangeError;
 
+mod macros;
+
 use core::fmt;
 
 #[cfg(feature = "__doctest")]
