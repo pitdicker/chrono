@@ -1,4 +1,5 @@
 use super::NaiveDateTime;
+use crate::datetime;
 use crate::duration::Duration as OldDuration;
 use crate::NaiveDate;
 use crate::{Datelike, FixedOffset, Utc};
@@ -82,13 +83,11 @@ fn test_datetime_from_timestamp_micros() {
 #[test]
 fn test_datetime_from_timestamp() {
     let from_timestamp = |secs| NaiveDateTime::from_timestamp_opt(secs, 0);
-    let ymdhms =
-        |y, m, d, h, n, s| NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, n, s).unwrap();
-    assert_eq!(from_timestamp(-1), Some(ymdhms(1969, 12, 31, 23, 59, 59)));
-    assert_eq!(from_timestamp(0), Some(ymdhms(1970, 1, 1, 0, 0, 0)));
-    assert_eq!(from_timestamp(1), Some(ymdhms(1970, 1, 1, 0, 0, 1)));
-    assert_eq!(from_timestamp(1_000_000_000), Some(ymdhms(2001, 9, 9, 1, 46, 40)));
-    assert_eq!(from_timestamp(0x7fffffff), Some(ymdhms(2038, 1, 19, 3, 14, 7)));
+    assert_eq!(from_timestamp(-1), Some(datetime!(1969-12-31 23:59:59)));
+    assert_eq!(from_timestamp(0), Some(datetime!(1970-1-1 00:00:00)));
+    assert_eq!(from_timestamp(1), Some(datetime!(1970-1-1 00:00:01)));
+    assert_eq!(from_timestamp(1_000_000_000), Some(datetime!(2001-9-9 01:46:40)));
+    assert_eq!(from_timestamp(0x7fffffff), Some(datetime!(2038-1-19 03:14:7)));
     assert_eq!(from_timestamp(i64::MIN), None);
     assert_eq!(from_timestamp(i64::MAX), None);
 }
@@ -142,27 +141,25 @@ fn test_datetime_add() {
 
 #[test]
 fn test_datetime_sub() {
-    let ymdhms =
-        |y, m, d, h, n, s| NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, n, s).unwrap();
     let since = NaiveDateTime::signed_duration_since;
     assert_eq!(
-        since(ymdhms(2014, 5, 6, 7, 8, 9), ymdhms(2014, 5, 6, 7, 8, 9)),
+        since(datetime!(2014-5-6 07:08:09), datetime!(2014-5-6 07:08:09)),
         OldDuration::zero()
     );
     assert_eq!(
-        since(ymdhms(2014, 5, 6, 7, 8, 10), ymdhms(2014, 5, 6, 7, 8, 9)),
+        since(datetime!(2014-5-6 07:08:10), datetime!(2014-5-6 07:08:09)),
         OldDuration::seconds(1)
     );
     assert_eq!(
-        since(ymdhms(2014, 5, 6, 7, 8, 9), ymdhms(2014, 5, 6, 7, 8, 10)),
+        since(datetime!(2014-5-6 07:08:09), datetime!(2014-5-6 07:08:10)),
         OldDuration::seconds(-1)
     );
     assert_eq!(
-        since(ymdhms(2014, 5, 7, 7, 8, 9), ymdhms(2014, 5, 6, 7, 8, 10)),
+        since(datetime!(2014-5-7 07:08:09), datetime!(2014-5-6 07:08:10)),
         OldDuration::seconds(86399)
     );
     assert_eq!(
-        since(ymdhms(2001, 9, 9, 1, 46, 39), ymdhms(1970, 1, 1, 0, 0, 0)),
+        since(datetime!(2001-9-9 01:46:39), datetime!(1970-1-1 00:00:00)),
         OldDuration::seconds(999_999_999)
     );
 }
