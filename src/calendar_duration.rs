@@ -1,5 +1,6 @@
 use core::fmt;
 use core::num::NonZeroU32;
+use core::time::Duration;
 
 use crate::{expect, try_opt};
 
@@ -277,9 +278,17 @@ impl CalendarDuration {
     }
 }
 
+impl From<Duration> for CalendarDuration {
+    fn from(value: Duration) -> Self {
+        let seconds = u32::try_from(value.as_secs()).expect("value of `Duration` out of range");
+        Self::new().with_seconds(seconds).with_nanos(value.subsec_nanos()).unwrap()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::CalendarDuration;
+    use std::time::Duration;
 
     #[test]
     fn test_basic_functionality() {
@@ -308,6 +317,20 @@ mod tests {
         compare(CalendarDuration::new().with_seconds(123_456), 0, 0, 0, 123_456, 0);
         compare(CalendarDuration::new().with_nanos(123_456_789).unwrap(), 0, 0, 0, 0, 123_456_789);
         assert!(CalendarDuration::new().is_zero());
+    }
+
+    #[test]
+    fn test_from_std_duration() {
+        assert_eq!(
+            CalendarDuration::new().with_seconds(7).with_nanos(8).unwrap(),
+            Duration::new(7, 8).into()
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_from_extreme_duration_panics() {
+        let _ = CalendarDuration::from(Duration::new(1 << 32, 0));
     }
 
     #[test]
