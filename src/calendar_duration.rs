@@ -1,3 +1,4 @@
+use core::fmt;
 use core::num::NonZeroU32;
 
 use crate::{expect, try_opt};
@@ -23,7 +24,7 @@ use crate::{expect, try_opt};
 /// // Encoding 1½ year as a duration in seconds:
 /// let _duration = CalendarDuration::new().with_seconds(548 * 24 * 60 * 60);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CalendarDuration {
     // Components with a nominal duration
     months: u32,
@@ -33,6 +34,19 @@ pub struct CalendarDuration {
     seconds: u32,
     // `nanos` encodes `nanoseconds << 2 | has_minutes << 1 | 1`.
     nanos: NonZeroU32,
+}
+
+impl fmt::Debug for CalendarDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (mins, secs) = self.mins_and_secs();
+        f.debug_struct("CalendarDuration")
+            .field("months", &self.months)
+            .field("days", &self.days)
+            .field("minutes", &mins)
+            .field("seconds", &secs)
+            .field("nanos", &self.nanos())
+            .finish()
+    }
 }
 
 impl CalendarDuration {
