@@ -474,6 +474,9 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+mod calendar_duration;
+pub use calendar_duration::CalendarDuration;
+
 mod duration;
 pub use duration::Duration;
 #[cfg(feature = "std")]
