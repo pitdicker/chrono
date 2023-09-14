@@ -1,3 +1,4 @@
+use core::fmt;
 use core::num::NonZeroU64;
 
 use crate::{expect, try_opt};
@@ -58,6 +59,19 @@ pub struct CalendarDuration {
     // Components with an accurate duration
     mins_and_secs: MinutesAndSeconds,
     nanos: u32,
+}
+
+impl fmt::Debug for CalendarDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (mins, secs) = self.mins_and_secs();
+        f.debug_struct("CalendarDuration")
+            .field("months", &self.months)
+            .field("days", &self.days)
+            .field("minutes", &mins)
+            .field("seconds", &secs)
+            .field("nanos", &self.nanos)
+            .finish()
+    }
 }
 
 impl CalendarDuration {
