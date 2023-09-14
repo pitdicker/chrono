@@ -1,5 +1,6 @@
 use core::fmt;
 use core::num::NonZeroU64;
+use core::time::Duration;
 
 use crate::{expect, try_opt};
 
@@ -292,6 +293,16 @@ impl CalendarDuration {
     }
 }
 
+impl From<Duration> for CalendarDuration {
+    fn from(value: Duration) -> Self {
+        Self::new()
+            .with_seconds(value.as_secs())
+            .expect("value of `Duration` out of range")
+            .with_nanos(value.subsec_nanos())
+            .unwrap()
+    }
+}
+
 /// Type to encode either seconds, or minutes and up to 60 seconds.
 ///
 /// We don't allow having both an `u64` with minutes and an `u64` with seconds.
@@ -336,6 +347,7 @@ impl MinutesAndSeconds {
 #[cfg(test)]
 mod tests {
     use super::CalendarDuration;
+    use std::time::Duration;
 
     #[test]
     fn test_basic_functionality() {
@@ -411,6 +423,20 @@ mod tests {
         assert_eq!(new().with_hms(0, 0, 1), new().with_seconds(1));
         assert_eq!(new().with_hms(0, 0, 60), new().with_seconds(60));
         assert_ne!(new().with_hms(0, 1, 0), new().with_seconds(60));
+    }
+
+    #[test]
+    fn test_from_std_duration() {
+        assert_eq!(
+            CalendarDuration::new().with_seconds(7).unwrap().with_nanos(8).unwrap(),
+            Duration::new(7, 8).into()
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_from_extreme_duration_panics() {
+        let _ = CalendarDuration::from(Duration::new(1 << 62, 0));
     }
 
     #[test]
