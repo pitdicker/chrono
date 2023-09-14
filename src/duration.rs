@@ -70,6 +70,10 @@ pub(crate) const MAX: Duration = Duration {
 };
 
 impl Duration {
+    pub(crate) fn new(secs: i64, nanos: i32) -> Duration {
+        Duration { secs, nanos }
+    }
+
     /// Makes a new `Duration` with given number of weeks.
     /// Equivalent to `Duration::seconds(weeks * 7 * 24 * 60 * 60)` with overflow checks.
     /// Panics when the duration is out of bounds.

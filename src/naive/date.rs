@@ -26,7 +26,7 @@ use crate::format::{
 use crate::month::Months;
 use crate::naive::{IsoWeek, NaiveDateTime, NaiveTime};
 use crate::{expect, try_opt};
-use crate::{Datelike, Weekday};
+use crate::{CalendarDuration, Datelike, Weekday};
 
 use super::internals::{self, DateImpl, Mdf, Of, YearFlags};
 use super::isoweek;
@@ -1431,6 +1431,126 @@ impl NaiveDate {
     /// ```
     pub const fn leap_year(&self) -> bool {
         self.ymdf & (0b1000) == 0
+    }
+
+    /// Difference between two dates expressed as whole months and the remaining days.
+    /// This method takes into account the correct number of days of each passing month.
+    ///
+    /// The order of the arguments is (`self`, `other`), not (first, last).
+    /// `self` can be seen as the reference date.
+    /// - When *counting down* from the reference date to `other`, the number of remaining days may
+    /// depend on the number of days in the first month.
+    /// - When *counting the elapsed period* from `self` to `other`, the number of remaining days
+    ///   may depend on the number of days in the last month before `other`.
+    ///
+    /// ```
+    /// # use chrono::{NaiveDate, CalendarDuration};
+    /// let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+    /// let months_and_days = |m, d| CalendarDuration::new().with_months(m).with_days(d);
+    ///
+    /// // Elapsed months and days since a reference date:
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 26)), months_and_days(2, 29));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 27)), months_and_days(3, 0));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 28)), months_and_days(3, 1));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 29)), months_and_days(3, 2));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 30)), months_and_days(3, 3));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 5, 31)), months_and_days(3, 4));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 6, 1)), months_and_days(3, 5));
+    /// assert_eq!(ymd(2022, 2, 27).diff_months_days(ymd(2022, 6, 2)), months_and_days(3, 6));
+    ///
+    /// // Remaining months and days until the reference date:
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 2, 27)), months_and_days(3, 3)); // <- 3 days less!
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 2, 28)), months_and_days(3, 2));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 1)), months_and_days(3, 1));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 2)), months_and_days(3, 0));
+    /// assert_eq!(ymd(2022, 6, 2).diff_months_days(ymd(2022, 3, 3)), months_and_days(2, 30));
+    /// ```
+    pub const fn diff_months_days(self: NaiveDate, other: NaiveDate) -> CalendarDuration {
+        const fn days_in_month(month: u32, leap_year: bool) -> u32 {
+            match month {
+                0 | 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31, // include december twice, as 0 and 12
+                4 | 6 | 9 | 11 => 30,
+                2 if leap_year => 29,
+                2 => 28,
+                _ => panic!("invalid month number"),
+            }
+        }
+
+        let (first, last) = if self.ymdf <= other.ymdf { (self, other) } else { (other, self) };
+
+        let mut months = 12 * (last.year() - first.year()) as u32 + last.month() - first.month();
+        let days = if first.day() <= last.day() {
+            last.day() - first.day()
+        } else {
+            months -= 1;
+            if other.ymdf < self.ymdf {
+                let days_remaining_in_first_month =
+                    days_in_month(first.month(), self.leap_year()) - first.day();
+                days_remaining_in_first_month + last.day()
+            } else {
+                let days_remaining_in_forelast_month =
+                    days_in_month(last.month() - 1, self.leap_year()) - first.day();
+                days_remaining_in_forelast_month + last.day()
+            }
+        };
+        CalendarDuration::new().with_months(months).with_days(days)
+    }
+
+    /// Difference between two dates expressed as whole months and the remaining days.
+    pub fn diff_days(&self, other: NaiveDate) -> CalendarDuration {
+        let days = self.num_days_from_ce().abs_diff(other.num_days_from_ce());
+        CalendarDuration::new().with_days(days)
+    }
+
+    /// FIXME
+    pub fn add_calendar_duration(&self, duration: CalendarDuration) -> Option<NaiveDate> {
+        let (mins, secs) = duration.mins_and_secs();
+        let days_in_accurate_component = (mins * 60 + secs) / 86_400;
+        self.add_months_days(
+            duration.months(),
+            duration.days().checked_add(days_in_accurate_component)?,
+        )
+    }
+
+    /// FIXME
+    pub(crate) fn add_months_days(&self, months: u32, days: u32) -> Option<NaiveDate> {
+        if days > i32::MAX as u32 {
+            return None;
+        }
+        match (self.add_months(months), days as i32) {
+            (Ok(date), days) => date.add_days(days),
+            (Err(None), _) => None,    // out of range
+            (Err(Some(_)), 0) => None, // date does not exist
+            (Err(Some(date)), days) => date.add_days(days),
+        }
+    }
+
+    /// Add `months` to `self`.
+    ///
+    /// The resulting date may not exist, because the resulting month has less days than the
+    /// starting month. In that case we return `Err(Some(date))` with the last day of the month.
+    ///
+    /// Returns `Err(None)` if the result is out of range.
+    pub(crate) fn add_months(&self, months: u32) -> Result<NaiveDate, Option<NaiveDate>> {
+        // The maximum number of months between `NaiveDate::MIN` and `NaiveDate::MAX` is 2^19 * 12.
+        // Return out of range for values > 2^23 so we don't need to worry about integer overflow.
+        if months >= (1 << 23) {
+            return Err(None); // out of range
+        }
+
+        let month = self.month() + months;
+        let year = self.year() + (month / 12) as i32;
+        let month = month % 12;
+
+        let year_flags = YearFlags::from_year(year);
+        if let Some(date) =
+            NaiveDate::from_mdf(year, Mdf::new(month, self.day(), year_flags).unwrap())
+        {
+            Ok(date)
+        } else {
+            // Date does not exist, return the last day of the month.
+            Err(NaiveDate::from_mdf(year, Mdf::from_last_day_of_month(month, year_flags).unwrap()))
+        }
     }
 
     // This duplicates `Datelike::year()`, because trait methods can't be const yet.

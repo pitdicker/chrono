@@ -20,7 +20,9 @@ use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed,
 use crate::format::{Fixed, Item, Numeric, Pad};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
 use crate::offset::Utc;
-use crate::{expect, DateTime, Datelike, LocalResult, Months, TimeZone, Timelike, Weekday};
+use crate::{
+    expect, CalendarDuration, DateTime, Datelike, LocalResult, Months, TimeZone, Timelike, Weekday,
+};
 
 #[cfg(feature = "rustc-serialize")]
 pub(super) mod rustc_serialize;
@@ -982,6 +984,42 @@ impl NaiveDateTime {
     #[must_use]
     pub fn and_utc(&self) -> DateTime<Utc> {
         Utc.from_utc_datetime(self)
+    }
+
+    /// Adds a `CalendarDuration` to this `NaiveDateTime`.
+    ///
+    /// This method first adds the `months` component of the duration to `self`. Next it adds the
+    /// `days` component and the accurate component together, and adds them to the intermidiate
+    /// value.
+    ///
+    /// The intermidiate date after adding the `months` part may not exist because the resulting
+    /// month has less days than the month in `self`. In that case we act as if the intermidiate
+    /// date does exist and is the last day of that month. Only when the final result is not a valid
+    /// date we return `None`.
+    ///
+    /// Also returns `None` if the result is out of range.
+    pub fn add_calendar_duration(&self, duration: CalendarDuration) -> Option<NaiveDateTime> {
+        let (mins, secs) = duration.mins_and_secs();
+        let secs = OldDuration::new(
+            duration.days() as i64 * 86_400 + (mins * 60 + secs) as i64,
+            duration.nanos() as i32,
+        );
+        match self.date().add_months(duration.months()) {
+            Ok(intermidiate) => {
+                NaiveDateTime::new(intermidiate, self.time()).checked_add_signed(secs)
+            }
+            Err(None) => None, // out of range
+            Err(Some(intermidiate)) => {
+                // Intermidiate date does not exist, but the final result might.
+                // `intermidiate` is set to the last day of the month.
+                let result =
+                    NaiveDateTime::new(intermidiate, self.time()).checked_add_signed(secs)?;
+                if result.date == intermidiate {
+                    return None; // date does not exist
+                }
+                Some(result)
+            }
+        }
     }
 
     /// The minimum possible `NaiveDateTime`.

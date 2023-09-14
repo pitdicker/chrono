@@ -29,7 +29,7 @@ use crate::offset::Local;
 use crate::offset::{FixedOffset, Offset, TimeZone, Utc};
 #[allow(deprecated)]
 use crate::Date;
-use crate::{Datelike, Months, Timelike, Weekday};
+use crate::{CalendarDuration, Datelike, Months, Timelike, Weekday};
 
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -581,7 +581,31 @@ impl<Tz: TimeZone> DateTime<Tz> {
             .expect("writing rfc3339 datetime to string should never fail");
         result
     }
-
+/*
+    /// Adds a `CalendarDuration` to this `DateTime`.
+    ///
+    /// This method first adds the `months` component of the duration to `self` in local time. Next
+    /// it adds the `days` component in local time. Finally the value is converted to UTC, and we
+    /// add the accurate component of the duration.
+    ///
+    /// The intermidiate date after adding the `months` part may not exist because the resulting
+    /// month has less days than the month in `self`. In that case we act as if the intermidiate
+    /// date does exist and is the last day of that month. Only when the final result is not a valid
+    /// date we return `None`.
+    ///
+    /// The intermidiate value after adding days is converted to UTC. If it happens to fall inside
+    /// an DST transition we carry forward the `LocalResult`. And if the intermiadiate value is a
+    /// date that does not exist, we use the offset of the last nanosecond before the new month.
+    ///
+    /// Also returns `None` if the result is out of range.
+    pub fn add_calendar_duration(&self, duration: CalendarDuration) -> Option<NaiveDate> {
+        let local = self.naive_local();
+        match local.date().add_months_days(duration.months(), duration.days()) {}
+            .and_time(local.time());
+        let local_result = self.timezone().from_local_date(local);
+        local_result.map()
+    }
+*/
     /// The minimum possible `DateTime<Utc>`.
     pub const MIN_UTC: DateTime<Utc> = DateTime { datetime: NaiveDateTime::MIN, offset: Utc };
     /// The maximum possible `DateTime<Utc>`.
