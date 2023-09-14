@@ -2543,6 +2543,7 @@ mod tests {
 
         assert!(ymd_opt(2012, 0, 1).is_none());
         assert!(ymd_opt(2012, 1, 1).is_some());
+        assert!(ymd_opt(2012, 1, 0).is_none());
         assert!(ymd_opt(2012, 2, 29).is_some());
         assert!(ymd_opt(2014, 2, 29).is_none());
         assert!(ymd_opt(2014, 3, 0).is_none());
