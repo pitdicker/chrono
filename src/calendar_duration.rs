@@ -1,7 +1,9 @@
 use core::fmt;
 use core::num::NonZeroU64;
+use core::str;
 use core::time::Duration;
 
+use crate::format::{parse_iso8601_duration, ParseError, TOO_LONG};
 use crate::{expect, try_opt, OutOfRange};
 
 /// Duration type capable of expressing a duration as a combination of multiple units.
@@ -148,6 +150,18 @@ impl fmt::Display for CalendarDuration {
         }
         f.write_str("S")?;
         Ok(())
+    }
+}
+
+impl str::FromStr for CalendarDuration {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<CalendarDuration, ParseError> {
+        let (s, duration) = parse_iso8601_duration(s)?;
+        if !s.is_empty() {
+            return Err(TOO_LONG);
+        }
+        Ok(duration)
     }
 }
 

@@ -68,6 +68,7 @@ pub use formatting::{format, format_item, DelayedFormat};
 pub use locales::Locale;
 pub(crate) use parse::parse_rfc3339;
 pub use parse::{parse, parse_and_remainder};
+pub(crate) use parse_iso8601::parse_iso8601_duration;
 pub use parsed::Parsed;
 pub use strftime::StrftimeItems;
 
