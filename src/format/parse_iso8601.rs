@@ -274,6 +274,58 @@ pub(crate) fn parse_iso8601_time<'a>(
     Ok((s, format, set_time_fields(parsed, hour, minute, second, nanosecond)?))
 }
 
+/// Helper type for parsing decimals (as in an ISO 8601 duration).
+#[derive(Copy, Clone)]
+struct Decimal {
+    base: u32,
+    fraction: Option<Fraction>,
+}
+
+impl Decimal {
+    fn parse(s: &str) -> ParseResult<(&str, Self)> {
+        let (s, num) = scan::number(s, 1, 10)?;
+        let (s, frac) = match Fraction::parse(s) {
+            Ok((s, frac)) => (s, Some(frac)),
+            Err(_) => (s, None),
+        };
+        let result =
+            Decimal { base: u32::try_from(num).map_err(|_| OUT_OF_RANGE)?, fraction: frac };
+        Ok((s, result))
+    }
+
+    /// Multiplying this `Decimal` with `unit`.
+    ///
+    /// Returns `None` on out of range.
+    fn mul(&self, unit: u32) -> ParseResult<u32> {
+        let frac = self.fraction.unwrap_or(Fraction(0)).mul(unit as u64) as u32;
+        self.base
+            .checked_mul(unit)
+            .and_then(|n| n.checked_add(frac))
+            .ok_or(OUT_OF_RANGE)
+    }
+
+    /// Returns the result of multiplying this `Decimal` with `unit`.
+    ///
+    /// Returns two integers to represent the whole number and the fraction as nanos.
+    fn mul_with_nanos(&self, unit: u64) -> ParseResult<(u64, u32)> {
+        let (whole_from_rounding, fraction_as_nanos) =
+            self.fraction.unwrap_or(Fraction(0)).mul_with_nanos(unit);
+        let whole = (self.base as u64)
+            .checked_mul(unit)
+            .and_then(|n| n.checked_add(whole_from_rounding as u64))
+            .ok_or(OUT_OF_RANGE)?;
+        Ok((whole, fraction_as_nanos as u32))
+    }
+
+    /// Returns the value of this `Decimal` if it is an integer, otherwise `None`.
+    fn integer(&self) -> ParseResult<u32> {
+        match self.fraction {
+            None => Ok(self.base),
+            _ => Err(INVALID),
+        }
+    }
+}
+
 /// Helper type for parsing fractional numbers.
 ///
 /// The fractions is stored as an integer in the range 0..=10^15.
