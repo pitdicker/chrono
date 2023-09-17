@@ -37,6 +37,10 @@ pub struct CalendarDuration {
     nanos: NonZeroU32,
 }
 
+impl Default for CalendarDuration {
+    fn default() -> Self { CalendarDuration::new() }
+}
+
 impl fmt::Debug for CalendarDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (mins, secs) = self.mins_and_secs();
