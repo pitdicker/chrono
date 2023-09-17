@@ -37,6 +37,12 @@ pub struct CalendarDuration {
     nanos: NonZeroU32,
 }
 
+impl Default for CalendarDuration {
+    fn default() -> Self {
+        CalendarDuration::new()
+    }
+}
+
 impl fmt::Debug for CalendarDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (mins, secs) = self.mins_and_secs();
@@ -317,7 +323,10 @@ mod tests {
         compare(CalendarDuration::new().with_hms(3, 4, 5).unwrap(), 0, 0, 3 * 60 + 4, 5, 0);
         compare(CalendarDuration::new().with_seconds(123_456), 0, 0, 0, 123_456, 0);
         compare(CalendarDuration::new().with_nanos(123_456_789).unwrap(), 0, 0, 0, 0, 123_456_789);
+
+        compare(CalendarDuration::new(), 0, 0, 0, 0, 0);
         assert!(CalendarDuration::new().is_zero());
+        assert!(CalendarDuration::default().is_zero());
     }
 
     #[test]
