@@ -60,14 +60,7 @@ pub(crate) fn parse_iso8601_duration(mut s: &str) -> ParseResult<(&str, Calendar
     }
 
     if s.as_bytes().first() == Some(&b'T') {
-        if let Ok((s_, (hours, minutes, seconds, nanoseconds))) = parse_iso8601_duration_time(s) {
-            s = s_;
-            duration = match (hours, minutes) {
-                (0, 0) => duration.with_hms(hours, minutes, seconds).ok_or(OUT_OF_RANGE)?,
-                _ => duration.with_seconds(seconds),
-            };
-            duration = duration.with_nanos(nanoseconds).unwrap();
-        }
+        duration = consume!(parse_iso8601_duration_time(s, duration))?
     }
     Ok((s, duration))
 }
@@ -93,7 +86,8 @@ pub(crate) fn parse_iso8601_duration(mut s: &str) -> ParseResult<(&str, Calendar
 /// - `Tnn̲.nn̲S`
 pub(crate) fn parse_iso8601_duration_time(
     mut s: &str,
-) -> ParseResult<(&str, (u32, u32, u32, u32))> {
+    duration: CalendarDuration,
+) -> ParseResult<(&str, CalendarDuration)> {
     macro_rules! consume_or_return {
         ($e:expr, $return:expr) => {{
             match $e {
@@ -104,6 +98,19 @@ pub(crate) fn parse_iso8601_duration_time(
                 Err(_) => return $return,
             }
         }};
+    }
+    fn set_hms_nano(
+        duration: CalendarDuration,
+        hours: u32,
+        minutes: u32,
+        seconds: u32,
+        nanoseconds: u32,
+    ) -> ParseResult<CalendarDuration> {
+        let duration = match (hours, minutes) {
+            (0, 0) => duration.with_hms(hours, minutes, seconds).ok_or(OUT_OF_RANGE)?,
+            _ => duration.with_seconds(seconds),
+        };
+        Ok(duration.with_nanos(nanoseconds).unwrap())
     }
 
     s = scan::char(s, b'T')?;
@@ -123,10 +130,13 @@ pub(crate) fn parse_iso8601_duration_time(
                 let mins = secs / 60;
                 let secs = (secs % 60) as u32;
                 let minutes = u32::try_from(mins).map_err(|_| OUT_OF_RANGE)?;
-                return Ok((s, (0, minutes, secs, nanos)));
+                return Ok((s, set_hms_nano(duration, 0, minutes, secs, nanos)?));
             }
         }
-        next = consume_or_return!(Decimal::parse(s), Ok((s, (hours, minutes, 0, 0))));
+        next = consume_or_return!(
+            Decimal::parse(s),
+            Ok((s, set_hms_nano(duration, hours, minutes, 0, 0)?))
+        );
     }
 
     if s.as_bytes().first() == Some(&b'M') {
@@ -139,23 +149,26 @@ pub(crate) fn parse_iso8601_duration_time(
                 let mins = secs / 60;
                 let secs = (secs % 60) as u32;
                 minutes = u32::try_from(mins).map_err(|_| OUT_OF_RANGE)?;
-                return Ok((s, (hours, minutes, secs, nanos)));
+                return Ok((s, set_hms_nano(duration, hours, minutes, secs, nanos)?));
             }
         }
-        next = consume_or_return!(Decimal::parse(s), Ok((s, (hours, minutes, 0, 0))));
+        next = consume_or_return!(
+            Decimal::parse(s),
+            Ok((s, set_hms_nano(duration, hours, minutes, 0, 0)?))
+        );
     }
 
     if s.as_bytes().first() == Some(&b'S') {
         s = &s[1..];
         let (secs, nanos) = next.mul_with_nanos(1)?;
         let secs = u32::try_from(secs).map_err(|_| OUT_OF_RANGE)?;
-        return Ok((s, (hours, minutes, secs, nanos)));
+        return Ok((s, set_hms_nano(duration, hours, minutes, secs, nanos)?));
     }
 
     if incomplete {
         return Err(INVALID);
     }
-    Ok((s, (hours, minutes, 0, 0)))
+    Ok((s, set_hms_nano(duration, hours, minutes, 0, 0)?))
 }
 
 /// Helper type for parsing decimals (as in an ISO 8601 duration).
@@ -253,7 +266,7 @@ impl Fraction {
         let huge = self.0 * unit + div / 2;
         let whole = huge / POW10[15];
         let fraction_as_nanos = (huge % POW10[15]) / div;
-        dbg!(whole as i64, fraction_as_nanos as i64)
+        (whole as i64, fraction_as_nanos as i64)
     }
 }
 
@@ -299,139 +312,125 @@ mod tests {
 
     #[test]
     fn test_parse_duration_time() {
-        assert_eq!(parse_iso8601_duration_time("T12H"), Ok(("", (12, 0, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T12.25H"), Ok(("", (0, 735, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T12,25H"), Ok(("", (0, 735, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T34M"), Ok(("", (0, 34, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T34.25M"), Ok(("", (0, 34, 15, 0))));
-        assert_eq!(parse_iso8601_duration_time("T56S"), Ok(("", (0, 0, 56, 0))));
-        assert_eq!(parse_iso8601_duration_time("T0.789S"), Ok(("", (0, 0, 0, 789_000_000))));
-        assert_eq!(parse_iso8601_duration_time("T0,789S"), Ok(("", (0, 0, 0, 789_000_000))));
-        assert_eq!(parse_iso8601_duration_time("T12H34M"), Ok(("", (12, 34, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T12H34M56S"), Ok(("", (12, 34, 56, 0))));
+        let parse = parse_iso8601_duration_time;
+        let d = CalendarDuration::new();
+
+        assert_eq!(parse("T12H", d), Ok(("", d.with_hms(12, 0, 0).unwrap())));
+        assert_eq!(parse("T12.25H", d), Ok(("", d.with_hms(12, 15, 0).unwrap())));
+        assert_eq!(parse("T12,25H", d), Ok(("", d.with_hms(12, 15, 0).unwrap())));
+        assert_eq!(parse("T34M", d), Ok(("", d.with_hms(0, 34, 0).unwrap())));
+        assert_eq!(parse("T34.25M", d), Ok(("", d.with_hms(0, 34, 15).unwrap())));
+        assert_eq!(parse("T56S", d), Ok(("", d.with_seconds(56))));
+        assert_eq!(parse("T0.789S", d), Ok(("", d.with_millis(789).unwrap())));
+        assert_eq!(parse("T0,789S", d), Ok(("", d.with_millis(789).unwrap())));
+        assert_eq!(parse("T12H34M", d), Ok(("", d.with_hms(12, 34, 0).unwrap())));
+        assert_eq!(parse("T12H34M56S", d), Ok(("", d.with_hms(12, 34, 56).unwrap())));
         assert_eq!(
-            parse_iso8601_duration_time("T12H34M56.789S"),
-            Ok(("", (12, 34, 56, 789_000_000)))
+            parse("T12H34M56.789S", d),
+            Ok(("", d.with_hms(12, 34, 56).unwrap().with_millis(789).unwrap()))
         );
-        assert_eq!(parse_iso8601_duration_time("T12H56S"), Ok(("", (12, 0, 56, 0))));
-        assert_eq!(parse_iso8601_duration_time("T34M56S"), Ok(("", (0, 34, 56, 0))));
+        assert_eq!(parse("T12H56S", d), Ok(("", d.with_hms(12, 0, 56).unwrap())));
+        assert_eq!(parse("T34M56S", d), Ok(("", d.with_hms(0, 34, 56).unwrap())));
 
         // Data after a fraction is ignored
-        assert_eq!(parse_iso8601_duration_time("T12.5H16M"), Ok(("16M", (0, 750, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T12H16.5M30S"), Ok(("30S", (12, 16, 30, 0))));
+        assert_eq!(parse("T12.5H16M", d), Ok(("16M", d.with_hms(12, 30, 0).unwrap())));
+        assert_eq!(parse("T12H16.5M30S", d), Ok(("30S", d.with_hms(12, 16, 30).unwrap())));
 
         // Zero values
-        assert_eq!(parse_iso8601_duration_time("T0H"), Ok(("", (0, 0, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T0M"), Ok(("", (0, 0, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T0S"), Ok(("", (0, 0, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T0,0S"), Ok(("", (0, 0, 0, 0))));
+        assert_eq!(parse("T0H", d), Ok(("", d)));
+        assert_eq!(parse("T0M", d), Ok(("", d)));
+        assert_eq!(parse("T0S", d), Ok(("", d)));
+        assert_eq!(parse("T0,0S", d), Ok(("", d)));
 
         // Empty or invalid values
-        assert_eq!(parse_iso8601_duration_time("TH"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("TM"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("TS"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("T.5S"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("T,5S"), Err(INVALID));
+        assert_eq!(parse("TH", d), Err(INVALID));
+        assert_eq!(parse("TM", d), Err(INVALID));
+        assert_eq!(parse("TS", d), Err(INVALID));
+        assert_eq!(parse("T.5S", d), Err(INVALID));
+        assert_eq!(parse("T,5S", d), Err(INVALID));
 
         // Date components
-        assert_eq!(parse_iso8601_duration_time("T5W"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("T5Y"), Err(INVALID));
-        assert_eq!(parse_iso8601_duration_time("T5D"), Err(INVALID));
+        assert_eq!(parse("T5W", d), Err(INVALID));
+        assert_eq!(parse("T5Y", d), Err(INVALID));
+        assert_eq!(parse("T5D", d), Err(INVALID));
 
         // Max values
-        assert_eq!(parse_iso8601_duration_time("T71582788H"), Ok(("", (u32::MAX / 60, 0, 0, 0))));
-        // assert_eq!(parse_iso8601_duration_time("T71582789H"), Err(OUT_OF_RANGE)); // up to the caller
-        assert_eq!(parse_iso8601_duration_time("T71582788.25H"), Ok(("", (0, u32::MAX, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T71582788.5H"), Err(OUT_OF_RANGE));
-        assert_eq!(parse_iso8601_duration_time("T4294967295M"), Ok(("", (0, u32::MAX, 0, 0))));
-        assert_eq!(parse_iso8601_duration_time("T4294967296M"), Err(OUT_OF_RANGE));
-        assert_eq!(parse_iso8601_duration_time("T4294967295.25M"), Ok(("", (0, u32::MAX, 15, 0))));
+        assert_eq!(parse("T71582788H", d), Ok(("", d.with_hms(u32::MAX / 60, 0, 0).unwrap())));
+        assert_eq!(parse("T71582789H", d), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T71582788.25H", d), Ok(("", d.with_hms(0, u32::MAX, 0).unwrap())));
+        assert_eq!(parse("T71582788.5H", d), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T4294967295M", d), Ok(("", d.with_hms(0, u32::MAX, 0).unwrap())));
+        assert_eq!(parse("T4294967296M", d), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T4294967295.25M", d), Ok(("", d.with_hms(0, u32::MAX, 15).unwrap())));
         assert_eq!(
-            parse_iso8601_duration_time("T4294967295.99999999999M"),
-            Ok(("", (0, u32::MAX, 59, 999_999_999)))
+            parse("T4294967295.99999999999M", d),
+            Ok(("", d.with_hms(0, u32::MAX, 59).unwrap().with_nanos(999_999_999).unwrap()))
         );
-        assert_eq!(parse_iso8601_duration_time("T4294967295.999999999999M"), Err(OUT_OF_RANGE));
-        assert_eq!(parse_iso8601_duration_time("T4294967295S"), Ok(("", (0, 0, u32::MAX, 0))));
-        assert_eq!(parse_iso8601_duration_time("T4294967296S"), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T4294967295.999999999999M", d), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T4294967295S", d), Ok(("", d.with_hms(0, 0, u32::MAX).unwrap())));
+        assert_eq!(parse("T4294967296S", d), Err(OUT_OF_RANGE));
         assert_eq!(
-            parse_iso8601_duration_time("T4294967295.25S"),
-            Ok(("", (0, 0, u32::MAX, 250_000_000)))
+            parse("T4294967295.25S", d),
+            Ok(("", d.with_hms(0, 0, u32::MAX).unwrap().with_millis(250).unwrap()))
         );
         assert_eq!(
-            parse_iso8601_duration_time("T4294967295.999999999S"),
-            Ok(("", (0, 0, u32::MAX, 999_999_999)))
+            parse("T4294967295.999999999S", d),
+            Ok(("", d.with_hms(0, 0, u32::MAX).unwrap().with_nanos(999_999_999).unwrap()))
         );
-        assert_eq!(parse_iso8601_duration_time("T4294967295.9999999995S"), Err(OUT_OF_RANGE));
+        assert_eq!(parse("T4294967295.9999999995S", d), Err(OUT_OF_RANGE));
     }
 
     #[test]
     fn test_parse_duration() {
+        let d = CalendarDuration::new();
         assert_eq!(
             parse_iso8601_duration("P12Y"),
-            Ok(("", CalendarDuration::new().with_years_and_months(12, 0).unwrap()))
+            Ok(("", d.with_years_and_months(12, 0).unwrap()))
         );
-        assert_eq!(
-            parse_iso8601_duration("P34M"),
-            Ok(("", CalendarDuration::new().with_months(34)))
-        );
-        assert_eq!(parse_iso8601_duration("P56D"), Ok(("", CalendarDuration::new().with_days(56))));
-        assert_eq!(
-            parse_iso8601_duration("P78W"),
-            Ok(("", CalendarDuration::new().with_weeks_and_days(78, 0).unwrap()))
-        );
+        assert_eq!(parse_iso8601_duration("P34M"), Ok(("", d.with_months(34))));
+        assert_eq!(parse_iso8601_duration("P56D"), Ok(("", d.with_days(56))));
+        assert_eq!(parse_iso8601_duration("P78W"), Ok(("", d.with_weeks_and_days(78, 0).unwrap())));
 
         // Fractional date values
         assert_eq!(
             parse_iso8601_duration("P1.25Y"),
-            Ok(("", CalendarDuration::new().with_years_and_months(1, 3).unwrap()))
+            Ok(("", d.with_years_and_months(1, 3).unwrap()))
         );
         assert_eq!(
             parse_iso8601_duration("P1.99Y"),
-            Ok(("", CalendarDuration::new().with_years_and_months(2, 0).unwrap()))
+            Ok(("", d.with_years_and_months(2, 0).unwrap()))
         );
-        assert_eq!(
-            parse_iso8601_duration("P1.4W"),
-            Ok(("", CalendarDuration::new().with_days(10)))
-        );
-        assert_eq!(
-            parse_iso8601_duration("P1.95W"),
-            Ok(("", CalendarDuration::new().with_days(14)))
-        );
+        assert_eq!(parse_iso8601_duration("P1.4W"), Ok(("", d.with_days(10))));
+        assert_eq!(parse_iso8601_duration("P1.95W"), Ok(("", d.with_days(14))));
         assert_eq!(parse_iso8601_duration("P1.5M"), Err(INVALID));
         assert_eq!(parse_iso8601_duration("P1.5D"), Err(INVALID));
 
         // Data after a fraction is ignored
         assert_eq!(
             parse_iso8601_duration("P1.25Y5D"),
-            Ok(("5D", CalendarDuration::new().with_years_and_months(1, 3).unwrap()))
+            Ok(("5D", d.with_years_and_months(1, 3).unwrap()))
         );
         assert_eq!(
             parse_iso8601_duration("P1.25YT3H"),
-            Ok(("T3H", CalendarDuration::new().with_years_and_months(1, 3).unwrap()))
+            Ok(("T3H", d.with_years_and_months(1, 3).unwrap()))
         );
 
         // Zero values
-        assert_eq!(parse_iso8601_duration("P0Y"), Ok(("", CalendarDuration::new())));
-        assert_eq!(parse_iso8601_duration("P0M"), Ok(("", CalendarDuration::new())));
-        assert_eq!(parse_iso8601_duration("P0W"), Ok(("", CalendarDuration::new())));
-        assert_eq!(parse_iso8601_duration("P0D"), Ok(("", CalendarDuration::new())));
-        assert_eq!(parse_iso8601_duration("PT0M"), Ok(("", CalendarDuration::new())));
-        assert_eq!(parse_iso8601_duration("PT0S"), Ok(("", CalendarDuration::new())));
+        assert_eq!(parse_iso8601_duration("P0Y"), Ok(("", d)));
+        assert_eq!(parse_iso8601_duration("P0M"), Ok(("", d)));
+        assert_eq!(parse_iso8601_duration("P0W"), Ok(("", d)));
+        assert_eq!(parse_iso8601_duration("P0D"), Ok(("", d)));
+        assert_eq!(parse_iso8601_duration("PT0M"), Ok(("", d)));
+        assert_eq!(parse_iso8601_duration("PT0S"), Ok(("", d)));
 
         assert_eq!(
             parse_iso8601_duration("P12W34D"),
-            Ok(("34D", CalendarDuration::new().with_weeks_and_days(12, 0).unwrap()))
+            Ok(("34D", d.with_weeks_and_days(12, 0).unwrap()))
         );
         assert_eq!(parse_iso8601_duration("P12Y12Y"), Err(INVALID)); // TODO
         assert_eq!(parse_iso8601_duration("P12M12M"), Err(INVALID)); // TODO
-        assert_eq!(
-            parse_iso8601_duration("P12D12D"),
-            Ok(("12D", CalendarDuration::new().with_days(12)))
-        );
+        assert_eq!(parse_iso8601_duration("P12D12D"), Ok(("12D", d.with_days(12))));
         assert_eq!(parse_iso8601_duration("P12M12Y"), Err(INVALID)); // TODO
-        assert_eq!(
-            parse_iso8601_duration("P12D12Y"),
-            Ok(("12Y", CalendarDuration::new().with_days(12)))
-        );
+        assert_eq!(parse_iso8601_duration("P12D12Y"), Ok(("12Y", d.with_days(12))));
     }
 }
