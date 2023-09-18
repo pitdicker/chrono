@@ -305,4 +305,51 @@ mod tests {
         compare(CalendarDuration::new().with_nanos(123_456_789).unwrap(), 0, 0, 0, 0, 123_456_789);
         assert!(CalendarDuration::new().is_zero());
     }
+
+    #[test]
+    fn test_invalid_returns_none() {
+        assert!(CalendarDuration::new().with_years_and_months(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX / 12 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 1).is_none());
+
+        assert!(CalendarDuration::new().with_weeks_and_days(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX / 7 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 1).is_none());
+
+        const MAX_MINUTES: u64 = u64::MAX >> 8;
+        const MAX_HOURS: u64 = MAX_MINUTES / 60;
+        assert!(CalendarDuration::new().with_hms(100, 100, 60).is_some());
+        assert!(CalendarDuration::new().with_hms(0, 0, 61).is_none());
+        assert!(CalendarDuration::new().with_hms(0, MAX_MINUTES, 0).is_some());
+        assert!(CalendarDuration::new().with_hms(0, MAX_MINUTES + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_hms(MAX_HOURS, MAX_MINUTES % 60, 0).is_some());
+        assert!(CalendarDuration::new().with_hms(MAX_HOURS, MAX_MINUTES % 60 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_hms(MAX_HOURS + 1, 0, 0).is_none());
+        assert!(CalendarDuration::new().with_hms(u64::MAX, 0, 0).is_none());
+        assert!(CalendarDuration::new().with_hms(0, u64::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_hms(0, 0, u8::MAX).is_none());
+
+        const MAX_SECONDS: u64 = u64::MAX >> 2;
+        assert!(CalendarDuration::new().with_seconds(100).is_some());
+        assert!(CalendarDuration::new().with_seconds(MAX_SECONDS).is_some());
+        assert!(CalendarDuration::new().with_seconds(MAX_SECONDS + 1).is_none());
+        assert!(CalendarDuration::new().with_seconds(u64::MAX).is_none());
+
+        assert!(CalendarDuration::new().with_nanos(1_000_000_000).is_none());
+        assert!(CalendarDuration::new().with_nanos(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_micros(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_micros(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_millis(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_millis(u32::MAX).is_none());
+    }
+
+    #[test]
+    fn test_seconds_compare_equal() {
+        let new = CalendarDuration::new;
+        assert_eq!(new().with_hms(0, 0, 1), new().with_seconds(1));
+        assert_eq!(new().with_hms(0, 0, 60), new().with_seconds(60));
+        assert_ne!(new().with_hms(0, 1, 0), new().with_seconds(60));
+    }
 }
