@@ -237,6 +237,26 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_returns_none() {
+        assert!(CalendarDuration::new().with_years_and_months(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX / 12 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 1).is_none());
+
+        assert!(CalendarDuration::new().with_weeks_and_days(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX / 7 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 1).is_none());
+
+        assert!(CalendarDuration::new().with_nanos(1_000_000_000).is_none());
+        assert!(CalendarDuration::new().with_nanos(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_micros(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_micros(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_millis(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_millis(u32::MAX).is_none());
+    }
+
+    #[test]
     fn test_type_sizes() {
         use core::mem::size_of;
         assert_eq!(size_of::<CalendarDuration>(), 16);
