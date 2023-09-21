@@ -138,20 +138,22 @@ impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> DelayedFormat<I> {
 impl<'a, I: Iterator<Item = B> + Clone, B: Borrow<Item<'a>>> Display for DelayedFormat<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         #[cfg(feature = "unstable-locales")]
-        {
-            if let Some(locale) = self.locale {
-                return format_localized(
-                    f,
-                    self.date.as_ref(),
-                    self.time.as_ref(),
-                    self.off.as_ref(),
-                    self.items.clone(),
-                    locale,
-                );
-            }
-        }
+        let locale = self.locale;
+        #[cfg(not(feature = "unstable-locales"))]
+        let locale = None;
 
-        format(f, self.date.as_ref(), self.time.as_ref(), self.off.as_ref(), self.items.clone())
+        let mut result = String::new();
+        for item in self.items.clone() {
+            format_inner(
+                &mut result,
+                self.date.as_ref(),
+                self.time.as_ref(),
+                self.off.as_ref(),
+                item.borrow(),
+                locale,
+            )?;
+        }
+        f.pad(&result)
     }
 }
 
@@ -170,12 +172,17 @@ where
     I: Iterator<Item = B> + Clone,
     B: Borrow<Item<'a>>,
 {
-    let mut result = String::new();
-    for item in items {
-        format_inner(&mut result, date, time, off, item.borrow(), None)?;
+    DelayedFormat {
+        date: date.copied(),
+        time: time.copied(),
+        off: off.cloned(),
+        items,
+        #[cfg(feature = "unstable-locales")]
+        locale: None,
     }
-    w.pad(&result)
+    .fmt(w)
 }
+
 /// Formats single formatting item
 #[cfg(any(feature = "alloc", feature = "std"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
@@ -186,9 +193,15 @@ pub fn format_item(
     off: Option<&(String, FixedOffset)>,
     item: &Item<'_>,
 ) -> fmt::Result {
-    let mut result = String::new();
-    format_inner(&mut result, date, time, off, item, None)?;
-    w.pad(&result)
+    DelayedFormat {
+        date: date.copied(),
+        time: time.copied(),
+        off: off.cloned(),
+        items: [item].into_iter(),
+        #[cfg(feature = "unstable-locales")]
+        locale: None,
+    }
+    .fmt(w)
 }
 
 /// Tries to format given arguments with given formatting items.
@@ -207,11 +220,14 @@ where
     I: Iterator<Item = B> + Clone,
     B: Borrow<Item<'a>>,
 {
-    let mut result = String::new();
-    for item in items {
-        format_inner(&mut result, date, time, off, item.borrow(), Some(locale))?;
+    DelayedFormat {
+        date: date.copied(),
+        time: time.copied(),
+        off: off.cloned(),
+        items,
+        locale: Some(locale),
     }
-    w.pad(&result)
+    .fmt(w)
 }
 
 /// Formats single formatting item
@@ -225,9 +241,14 @@ pub fn format_item_localized(
     item: &Item<'_>,
     locale: Locale,
 ) -> fmt::Result {
-    let mut result = String::new();
-    format_inner(&mut result, date, time, off, item, Some(locale))?;
-    w.pad(&result)
+    DelayedFormat {
+        date: date.copied(),
+        time: time.copied(),
+        off: off.cloned(),
+        items: [item].into_iter(),
+        locale: Some(locale),
+    }
+    .fmt(w)
 }
 
 #[cfg(any(feature = "alloc", feature = "std"))]
