@@ -3,7 +3,7 @@
 
 //! The local (system) time zone.
 
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 use std::cmp::Ordering;
 
 #[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
@@ -186,7 +186,7 @@ impl TimeZone for Local {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 #[derive(Copy, Clone, Eq, PartialEq)]
 struct Transition {
     transition_utc: NaiveDateTime,
@@ -194,7 +194,7 @@ struct Transition {
     offset_after: FixedOffset,
 }
 
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 impl Transition {
     fn new(
         transition_local: NaiveDateTime,
@@ -209,14 +209,14 @@ impl Transition {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 impl PartialOrd for Transition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.transition_utc.cmp(&other.transition_utc))
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 impl Ord for Transition {
     fn cmp(&self, other: &Self) -> Ordering {
         self.transition_utc.cmp(&other.transition_utc)
@@ -225,7 +225,7 @@ impl Ord for Transition {
 
 // Calculate the time in UTC given a local time and transitions.
 // `transitions` must be sorted.
-#[cfg(windows)]
+#[cfg(any(unix, windows))]
 fn lookup_with_dst_transitions(
     transitions: &[Transition],
     dt: NaiveDateTime,
@@ -270,11 +270,11 @@ fn lookup_with_dst_transitions(
 #[cfg(test)]
 mod tests {
     use super::Local;
-    #[cfg(windows)]
+    #[cfg(any(unix, windows))]
     use crate::offset::local::{lookup_with_dst_transitions, Transition};
     use crate::offset::TimeZone;
     use crate::{Datelike, TimeDelta, Utc};
-    #[cfg(windows)]
+    #[cfg(any(unix, windows))]
     use crate::{FixedOffset, LocalResult, NaiveDate, NaiveDateTime};
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
+    #[cfg(any(unix, windows))]
     fn test_lookup_with_dst_transitions() {
         let ymdhms = |y, m, d, h, n, s| {
             NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, n, s).unwrap()
@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
+    #[cfg(any(unix, windows))]
     fn test_lookup_with_dst_transitions_limits() {
         // Transition beyond UTC year end doesn't panic in year of `NaiveDate::MAX`
         let std = FixedOffset::east_opt(3 * 60 * 60).unwrap();
