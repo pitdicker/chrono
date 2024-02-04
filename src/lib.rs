@@ -592,6 +592,18 @@ macro_rules! try_opt {
     };
 }
 
+/// Workaround because `?` is not (yet) available in const context.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! try_err {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        }
+    };
+}
+
 /// Workaround because `.expect()` is not (yet) available in const context.
 #[macro_export]
 #[doc(hidden)]
@@ -600,6 +612,22 @@ macro_rules! expect {
         match $e {
             Some(v) => v,
             None => panic!($m),
+        }
+    };
+}
+
+/// Workaround because `.ok()` is not (yet) available in const context.
+///
+/// FIXME: This is a temporary macro, intended to be used while we convert our API from returning
+/// `Option` to `Result` piece-by-piece. Remove when that work is done.
+#[macro_export]
+#[allow(unused)]
+#[doc(hidden)]
+macro_rules! ok {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => Some(v),
+            Err(_) => None,
         }
     };
 }
