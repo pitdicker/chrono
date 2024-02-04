@@ -478,6 +478,9 @@ pub mod prelude {
 mod datetime;
 pub use datetime::DateTime;
 
+pub(crate) mod error;
+pub use error::Error;
+
 pub mod format;
 /// L10n locales.
 #[cfg(feature = "unstable-locales")]
