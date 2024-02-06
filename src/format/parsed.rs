@@ -11,13 +11,15 @@ use crate::{DateTime, Datelike, TimeDelta, Timelike, Weekday};
 
 /// A type to hold parsed fields of date and time that can check all fields are consistent.
 ///
-/// There are two classes of methods:
+/// There are three classes of methods:
 ///
 /// - `set_*` methods to set fields you have available. They do a basic range check, and if the
 ///   same field is set more than once it is checked for consistency.
 ///
 /// - `to_*` methods try to make a concrete date and time value out of set fields.
 ///   They fully check that all fields are consistent and whether the date/datetime exists.
+///
+/// - Methods to inspect the parsed fields.
 ///
 /// `Parsed` is used internally by all parsing functions in chrono. It is a public type so that it
 /// can be used to write custom parsers that reuse the resolving algorithm, or to inspect the
@@ -116,7 +118,7 @@ use crate::{DateTime, Datelike, TimeDelta, Timelike, Weekday};
 /// assert!(result.is_err());
 /// if result.is_err() {
 ///     // What is the weekday?
-///     assert_eq!(parsed.weekday, Some(Weekday::Thu));
+///     assert_eq!(parsed.weekday(), Some(Weekday::Thu));
 /// }
 /// # Ok::<(), chrono::ParseError>(())
 /// ```
@@ -236,6 +238,8 @@ impl Parsed {
     ///
     /// The value can be negative, unlike the 'year divided by 100' and 'year modulo 100' fields.
     ///
+    /// See also [`year()`](Parsed::year).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is outside the range of an `i32`.
@@ -247,6 +251,8 @@ impl Parsed {
     }
 
     /// Set the 'year divided by 100' field to the given value.
+    ///
+    /// See also [`year_div_100()`](Parsed::year_div_100).
     ///
     /// # Errors
     ///
@@ -269,6 +275,8 @@ impl Parsed {
     /// field is also not set), it assumes a default value for the 'year divided by 100' field.
     /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
     ///
+    /// See also [`year_mod_100()`](Parsed::year_mod_100).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is negative or if it is greater than 99.
@@ -286,6 +294,8 @@ impl Parsed {
     ///
     /// The value can be negative, unlike the 'year divided by 100' and 'year modulo 100' fields.
     ///
+    /// See also [`isoyear()`](Parsed::isoyear).
+    ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
     /// # Errors
@@ -300,6 +310,8 @@ impl Parsed {
 
     /// Set the 'year divided by 100' field that is part of an [ISO 8601 week date] to the given
     /// value.
+    ///
+    /// See also [`isoyear_div_100()`](Parsed::isoyear_div_100).
     ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
@@ -324,6 +336,8 @@ impl Parsed {
     /// field is also not set), it assumes a default value for the 'year divided by 100' field.
     /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
     ///
+    /// See also [`isoyear_mod_100()`](Parsed::isoyear_mod_100).
+    ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
     /// # Errors
@@ -340,6 +354,8 @@ impl Parsed {
     }
 
     /// Set the 'month' field to the given value.
+    ///
+    /// See also [`month()`](Parsed::month).
     ///
     /// # Errors
     ///
@@ -358,6 +374,8 @@ impl Parsed {
     ///
     /// Week 1 starts at the first Sunday of January.
     ///
+    /// See also [`week_from_sun()`](Parsed::week_from_sun).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-53.
@@ -375,6 +393,8 @@ impl Parsed {
     ///
     /// Week 1 starts at the first Monday of January.
     ///
+    /// See also [`week_from_mon()`](Parsed::week_from_mon).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-53.
@@ -389,6 +409,8 @@ impl Parsed {
     }
 
     /// Set the '[ISO 8601 week number]' field to the given value.
+    ///
+    /// See also [`isoweek()`](Parsed::isoweek).
     ///
     /// [ISO 8601 week number]: crate::NaiveDate#week-date
     ///
@@ -407,6 +429,8 @@ impl Parsed {
 
     /// Set the 'day of the week' field to the given value.
     ///
+    /// See also [`weekday()`](Parsed::weekday).
+    ///
     /// # Errors
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
@@ -416,6 +440,8 @@ impl Parsed {
     }
 
     /// Set the 'ordinal' (day of the year) field to the given value.
+    ///
+    /// See also [`ordinal()`](Parsed::ordinal).
     ///
     /// # Errors
     ///
@@ -431,6 +457,8 @@ impl Parsed {
     }
 
     /// Set the 'day of the month' field to the given value.
+    ///
+    /// See also [`day()`](Parsed::day).
     ///
     /// # Errors
     ///
@@ -449,6 +477,8 @@ impl Parsed {
     ///
     /// `false` indicates AM and `true` indicates PM.
     ///
+    /// See also [`hour_div_12()`](Parsed::hour_div_12).
+    ///
     /// # Errors
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
@@ -461,6 +491,8 @@ impl Parsed {
     ///
     /// Value must be in the canonical range of 1-12.
     /// It will internally be stored as 0-11 (`value % 12`).
+    ///
+    /// See also [`hour_mod_12()`](Parsed::hour_mod_12).
     ///
     /// # Errors
     ///
@@ -482,6 +514,8 @@ impl Parsed {
     ///
     /// Internally this sets the 'hour modulo 12' and 'am/pm' fields.
     ///
+    /// See also [`hour_div_12()`](Parsed::hour_div_12) and [`hour_mod_12()`](Parsed::hour_mod_12).
+    ///
     /// # Errors
     ///
     /// May return `OUT_OF_RANGE` if `value` is not in the range 0-23.
@@ -501,6 +535,8 @@ impl Parsed {
 
     /// Set the 'minute' field to the given value.
     ///
+    /// See also [`minute()`](Parsed::minute).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-59.
@@ -518,6 +554,8 @@ impl Parsed {
     ///
     /// The value can be 60 in the case of a leap second.
     ///
+    /// See also [`second()`](Parsed::second).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-60.
@@ -534,6 +572,8 @@ impl Parsed {
     /// Set the 'nanosecond' field to the given value.
     ///
     /// This is the number of nanoseconds since the whole second.
+    ///
+    /// See also [`nanosecond()`](Parsed::nanosecond).
     ///
     /// # Errors
     ///
@@ -553,6 +593,8 @@ impl Parsed {
     /// A Unix timestamp is defined as the number of non-leap seconds since midnight UTC on
     /// January 1, 1970.
     ///
+    /// See also [`timestamp()`](Parsed::timestamp).
+    ///
     /// # Errors
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
@@ -565,6 +607,8 @@ impl Parsed {
     ///
     /// The offset is in seconds.
     ///
+    /// See also [`offset()`](Parsed::offset).
+    ///
     /// # Errors
     ///
     /// Returns `OUT_OF_RANGE` if `value` is ouside the range of an `i32`.
@@ -573,6 +617,175 @@ impl Parsed {
     #[inline]
     pub fn set_offset(&mut self, value: i64) -> ParseResult<()> {
         set_if_consistent(&mut self.offset, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)
+    }
+
+    /// Get the 'year' field if set.
+    ///
+    /// See also [`set_year()`](Parsed::set_year).
+    #[inline]
+    pub fn year(&self) -> Option<i32> {
+        self.year
+    }
+
+    /// Get the 'year divided by 100' field if set.
+    ///
+    /// See also [`set_year_div_100()`](Parsed::set_year_div_100).
+    #[inline]
+    pub fn year_div_100(&self) -> Option<i32> {
+        self.year_div_100
+    }
+
+    /// Get the 'year modulo 100' field if set.
+    ///
+    /// See also [`set_year_mod_100()`](Parsed::set_year_mod_100).
+    #[inline]
+    pub fn year_mod_100(&self) -> Option<i32> {
+        self.year_mod_100
+    }
+
+    /// Get the 'year' field that is part of an [ISO 8601 week date] if set.
+    ///
+    /// See also [`set_isoyear()`](Parsed::set_isoyear).
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    #[inline]
+    pub fn isoyear(&self) -> Option<i32> {
+        self.isoyear
+    }
+
+    /// Get the 'year divided by 100' field that is part of an [ISO 8601 week date] if set.
+    ///
+    /// See also [`set_isoyear_div_100()`](Parsed::set_isoyear_div_100).
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    #[inline]
+    pub fn isoyear_div_100(&self) -> Option<i32> {
+        self.isoyear_div_100
+    }
+
+    /// Get the 'year modulo 100' field that is part of an [ISO 8601 week date] if set.
+    ///
+    /// See also [`set_isoyear_mod_100()`](Parsed::set_isoyear_mod_100).
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    #[inline]
+    pub fn isoyear_mod_100(&self) -> Option<i32> {
+        self.isoyear_mod_100
+    }
+
+    /// Get the 'month' field if set.
+    ///
+    /// See also [`set_month()`](Parsed::set_month).
+    #[inline]
+    pub fn month(&self) -> Option<u32> {
+        self.month
+    }
+
+    /// Get the 'week number starting with Sunday' field if set.
+    ///
+    /// See also [`set_week_from_sun()`](Parsed::set_week_from_sun).
+    #[inline]
+    pub fn week_from_sun(&self) -> Option<u32> {
+        self.week_from_sun
+    }
+
+    /// Get the 'week number starting with Monday' field if set.
+    ///
+    /// See also [`set_week_from_mon()`](Parsed::set_week_from_mon).
+    #[inline]
+    pub fn week_from_mon(&self) -> Option<u32> {
+        self.week_from_mon
+    }
+
+    /// Get the '[ISO 8601 week number]' field if set.
+    ///
+    /// See also [`set_isoweek()`](Parsed::set_isoweek).
+    ///
+    /// [ISO 8601 week number]: crate::NaiveDate#week-date
+    #[inline]
+    pub fn isoweek(&self) -> Option<u32> {
+        self.isoweek
+    }
+
+    /// Get the 'day of the week' field if set.
+    ///
+    /// See also [`set_weekday()`](Parsed::set_weekday).
+    #[inline]
+    pub fn weekday(&self) -> Option<Weekday> {
+        self.weekday
+    }
+
+    /// Get the 'ordinal' (day of the year) field if set.
+    ///
+    /// See also [`set_ordinal()`](Parsed::set_ordinal).
+    #[inline]
+    pub fn ordinal(&self) -> Option<u32> {
+        self.ordinal
+    }
+
+    /// Get the 'day of the month' field if set.
+    ///
+    /// See also [`set_day()`](Parsed::set_day).
+    #[inline]
+    pub fn day(&self) -> Option<u32> {
+        self.day
+    }
+
+    /// Get the 'hour divided by 12' field (am/pm) if set.
+    ///
+    /// 0 indicates AM and 1 indicates PM.
+    ///
+    /// See also [`set_ampm()`](Parsed::set_ampm) and [`set_hour()`](Parsed::set_hour).
+    #[inline]
+    pub fn hour_div_12(&self) -> Option<u32> {
+        self.hour_div_12
+    }
+
+    /// Get the 'hour modulo 12' field if set.
+    ///
+    /// See also [`set_hour12()`](Parsed::set_hour12) and [`set_hour()`](Parsed::set_hour).
+    pub fn hour_mod_12(&self) -> Option<u32> {
+        self.hour_mod_12
+    }
+
+    /// Get the 'minute' field if set.
+    ///
+    /// See also [`set_minute()`](Parsed::set_minute).
+    #[inline]
+    pub fn minute(&self) -> Option<u32> {
+        self.minute
+    }
+
+    /// Get the 'second' field if set.
+    ///
+    /// See also [`set_second()`](Parsed::set_second).
+    #[inline]
+    pub fn second(&self) -> Option<u32> {
+        self.second
+    }
+
+    /// Get the 'nanosecond' field if set.
+    ///
+    /// See also [`set_nanosecond()`](Parsed::set_nanosecond).
+    #[inline]
+    pub fn nanosecond(&self) -> Option<u32> {
+        self.nanosecond
+    }
+
+    /// Get the 'timestamp' field if set.
+    ///
+    /// See also [`set_timestamp()`](Parsed::set_timestamp).
+    #[inline]
+    pub fn timestamp(&self) -> Option<i64> {
+        self.timestamp
+    }
+
+    /// Get the 'offset' field if set.
+    ///
+    /// See also [`set_offset()`](Parsed::set_offset).
+    #[inline]
+    pub fn offset(&self) -> Option<i32> {
+        self.offset
     }
 
     /// Returns a parsed naive date out of given fields.
