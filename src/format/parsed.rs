@@ -124,49 +124,28 @@ use crate::{DateTime, Datelike, TimeDelta, Timelike, Weekday};
 /// }
 /// # Ok::<(), chrono::ParseError>(())
 /// ```
-#[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 pub struct Parsed {
-    #[doc(hidden)]
-    pub year: Option<i32>,
-    #[doc(hidden)]
-    pub year_div_100: Option<i32>,
-    #[doc(hidden)]
-    pub year_mod_100: Option<i32>,
-    #[doc(hidden)]
-    pub isoyear: Option<i32>,
-    #[doc(hidden)]
-    pub isoyear_div_100: Option<i32>,
-    #[doc(hidden)]
-    pub isoyear_mod_100: Option<i32>,
-    #[doc(hidden)]
-    pub month: Option<u32>,
-    #[doc(hidden)]
-    pub week_from_sun: Option<u32>,
-    #[doc(hidden)]
-    pub week_from_mon: Option<u32>,
-    #[doc(hidden)]
-    pub isoweek: Option<u32>,
-    #[doc(hidden)]
-    pub weekday: Option<Weekday>,
-    #[doc(hidden)]
-    pub ordinal: Option<u32>,
-    #[doc(hidden)]
-    pub day: Option<u32>,
-    #[doc(hidden)]
-    pub hour_div_12: Option<u32>,
-    #[doc(hidden)]
-    pub hour_mod_12: Option<u32>,
-    #[doc(hidden)]
-    pub minute: Option<u32>,
-    #[doc(hidden)]
-    pub second: Option<u32>,
-    #[doc(hidden)]
-    pub nanosecond: Option<u32>,
-    #[doc(hidden)]
-    pub timestamp: Option<i64>,
-    #[doc(hidden)]
-    pub offset: Option<i32>,
+    year: Option<i32>,
+    year_div_100: Option<i32>,
+    year_mod_100: Option<i32>,
+    isoyear: Option<i32>,
+    isoyear_div_100: Option<i32>,
+    isoyear_mod_100: Option<i32>,
+    month: Option<u32>,
+    week_from_sun: Option<u32>,
+    week_from_mon: Option<u32>,
+    isoweek: Option<u32>,
+    weekday: Option<Weekday>,
+    ordinal: Option<u32>,
+    day: Option<u32>,
+    hour_div_12: Option<u32>,
+    hour_mod_12: Option<u32>,
+    minute: Option<u32>,
+    second: Option<u32>,
+    nanosecond: Option<u32>,
+    timestamp: Option<i64>,
+    offset: Option<i32>,
 }
 
 /// Checks if `old` is either empty or has the same value as `new` (i.e. "consistent"),
