@@ -12,11 +12,10 @@ use crate::{DateTime, Datelike, TimeDelta, Timelike, Weekday};
 /// Parsed parts of date and time. There are three classes of methods:
 ///
 /// - `set_*` methods try to set given field(s) while checking for the consistency.
-///   It may or may not check for the range constraint immediately (for efficiency reasons).
+///   They do a basic range check.
 ///
 /// - `to_*` methods try to make a concrete date and time value out of set fields.
-///   It fully checks any remaining out-of-range conditions and inconsistent/impossible fields.
-#[non_exhaustive]
+///   They fully check any remaining out-of-range conditions and inconsistent/impossible fields.
 ///
 /// - Methods to inspect the parsed fields.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
@@ -126,179 +125,365 @@ impl Parsed {
         Parsed::default()
     }
 
-    /// Tries to set the [`year`](#structfield.year) field from given value.
+    /// Set the 'year' field to the given value.
+    ///
+    /// The value can be negative unlike the 'year divided by 100' and 'year modulo 100' fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is outside the range of an `i32`.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_year(&mut self, value: i64) -> ParseResult<&mut Parsed> {
         set_if_consistent(&mut self.year, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
         Ok(self)
     }
 
-    /// Tries to set the [`year_div_100`](#structfield.year_div_100) field from given value.
+    /// Set the 'year divided by 100' field to the given value.
+    ///
+    /// Implies that the year is >= 1 BCE when set.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is negative or if it is greater than `i32::MAX`.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_year_div_100(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        if value < 0 {
+        if !(0..i32::MAX as i64).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
-        set_if_consistent(&mut self.year_div_100, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        set_if_consistent(&mut self.year_div_100, value as i32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`year_mod_100`](#structfield.year_mod_100) field from given value.
+    /// Set the 'year modulo 100' field to the given value.
+    ///
+    /// Implies that the year is >= 1 BCE when set.
+    ///
+    /// If this field is set while the 'year divided by 100' field is missing (and the full `year`
+    /// field is also not set), it assumes a default value for the 'year divided by 100' field.
+    /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is negative or if it is greater than 99.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_year_mod_100(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        if value < 0 {
+        if !(0..99).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
-        set_if_consistent(&mut self.year_mod_100, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        set_if_consistent(&mut self.year_mod_100, value as i32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`isoyear`](#structfield.isoyear) field from given value.
+    /// Set the 'year' field that is part of an [ISO 8601 week date] to the given value.
+    ///
+    /// The value can be negative unlike the 'year divided by 100' and 'year modulo 100' fields.
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is outside the range of an `i32`.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_isoyear(&mut self, value: i64) -> ParseResult<&mut Parsed> {
         set_if_consistent(&mut self.isoyear, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
         Ok(self)
     }
 
-    /// Tries to set the [`isoyear_div_100`](#structfield.isoyear_div_100) field from given value.
+    /// Set the 'year divided by 100' field that is part of an [ISO 8601 week date] to the given
+    /// value.
+    ///
+    /// Implies that the year is >= 1 BCE when set.
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is negative or if it is greater than `i32::MAX`.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_isoyear_div_100(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        if value < 0 {
+        if !(0..i32::MAX as i64).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
-        set_if_consistent(
-            &mut self.isoyear_div_100,
-            i32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
-        )?;
+        set_if_consistent(&mut self.isoyear_div_100, value as i32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`isoyear_mod_100`](#structfield.isoyear_mod_100) field from given value.
+    /// Set the 'year modulo 100' that is part of an [ISO 8601 week date] field to the given value.
+    ///
+    /// Implies that the year is >= 1 BCE when set.
+    ///
+    /// If this field is set while the 'year divided by 100' field is missing (and the full `year`
+    /// field is also not set), it assumes a default value for the 'year divided by 100' field.
+    /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
+    ///
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is negative or if it is greater than 99.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_isoyear_mod_100(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        if value < 0 {
+        if !(0..100).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
-        set_if_consistent(
-            &mut self.isoyear_mod_100,
-            i32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
-        )?;
+        set_if_consistent(&mut self.isoyear_mod_100, value as i32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`month`](#structfield.month) field from given value.
+    /// Set the 'month' field to the given value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 1-12.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_month(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.month, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(1..=12).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.month, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`week_from_sun`](#structfield.week_from_sun) field from given value.
+    /// Set the 'week number starting with Sunday' field to the given value.
+    ///
+    /// Week 1 starts at the first Sunday of January.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-53.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_week_from_sun(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(
-            &mut self.week_from_sun,
-            u32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
-        )?;
+        if !(0..=53).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.week_from_sun, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`week_from_mon`](#structfield.week_from_mon) field from given value.
+    /// Set the 'week number starting with Monday' field to the given value.
+    ///
+    /// Week 1 starts at the first Monday of January.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-53.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_week_from_mon(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(
-            &mut self.week_from_mon,
-            u32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
-        )?;
+        if !(0..=53).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.week_from_mon, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`isoweek`](#structfield.isoweek) field from given value.
+    /// Set the '[ISO 8601 week number]' field to the given value.
+    ///
+    /// [ISO 8601 week number]: crate::NaiveDate#week-date
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 1-53.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_isoweek(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.isoweek, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(1..=53).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.isoweek, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`weekday`](#structfield.weekday) field from given value.
+    /// Set the 'day of the week' field to the given value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_weekday(&mut self, value: Weekday) -> ParseResult<&mut Parsed> {
         set_if_consistent(&mut self.weekday, value)?;
         Ok(self)
     }
 
-    /// Tries to set the [`ordinal`](#structfield.ordinal) field from given value.
+    /// Set the 'ordinal' (day of the year) field to the given value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 1-366.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_ordinal(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.ordinal, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(1..=366).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.ordinal, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`day`](#structfield.day) field from given value.
+    /// Set the 'day of the month' field to the given value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 1-31.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_day(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.day, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(1..=31).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.day, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`hour_div_12`](#structfield.hour_div_12) field from given value.
-    /// (`false` for AM, `true` for PM)
+    /// Set the 'am/pm' field to the given value.
+    ///
+    /// `false` indicates AM and `true` indicates PM.
+    ///
+    /// # Errors
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_ampm(&mut self, value: bool) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.hour_div_12, u32::from(value))?;
+        set_if_consistent(&mut self.hour_div_12, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`hour_mod_12`](#structfield.hour_mod_12) field from
-    /// given hour number in 12-hour clocks.
+    /// Set the 'hour number in 12-hour clocks' field to the given value.
+    ///
+    /// Value must be in the canonical range of 1-12.
+    /// It will internally be stored as 0-11 (`value % 12`).
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 1-12.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_hour12(&mut self, value: i64) -> ParseResult<&mut Parsed> {
+    pub fn set_hour12(&mut self, mut value: i64) -> ParseResult<&mut Parsed> {
         if !(1..=12).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
+        if value == 12 {
+            value = 0
+        }
+        set_if_consistent(&mut self.hour_mod_12, value as u32)?;
+        Ok(self)
+    }
+
+    /// Set the 'hour' field to the given value.
+    ///
+    /// Internally this sets the 'hour modulo 12' and 'am/pm' fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-23.
+    ///
+    /// Returns `IMPOSSIBLE` one of the fields was already set to a different value.
+    #[inline]
+    pub fn set_hour(&mut self, value: i64) -> ParseResult<&mut Parsed> {
+        if !(0..=23).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.hour_div_12, value as u32 / 12)?;
         set_if_consistent(&mut self.hour_mod_12, value as u32 % 12)?;
         Ok(self)
     }
 
-    /// Tries to set both [`hour_div_12`](#structfield.hour_div_12) and
-    /// [`hour_mod_12`](#structfield.hour_mod_12) fields from given value.
-    #[inline]
-    pub fn set_hour(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        let v = u32::try_from(value).map_err(|_| OUT_OF_RANGE)?;
-        set_if_consistent(&mut self.hour_div_12, v / 12)?;
-        set_if_consistent(&mut self.hour_mod_12, v % 12)?;
-        Ok(self)
-    }
-
-    /// Tries to set the [`minute`](#structfield.minute) field from given value.
+    /// Set the 'minute' field to the given value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-59.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_minute(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.minute, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(0..=59).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.minute, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`second`](#structfield.second) field from given value.
+    /// Set the 'second' field to the given value.
+    ///
+    /// The value can be 60 in the case of a leap second.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-60.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_second(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.second, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(0..=60).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.second, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`nanosecond`](#structfield.nanosecond) field from given value.
+    /// Set the 'nanosecond' field to the given value.
+    ///
+    /// This is the number of nanoseconds since the whole second.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is not in the range 0-999,999,999.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_nanosecond(&mut self, value: i64) -> ParseResult<&mut Parsed> {
-        set_if_consistent(&mut self.nanosecond, u32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
+        if !(0..=999_999_999).contains(&value) {
+            return Err(OUT_OF_RANGE);
+        }
+        set_if_consistent(&mut self.nanosecond, value as u32)?;
         Ok(self)
     }
 
-    /// Tries to set the [`timestamp`](#structfield.timestamp) field from given value.
+    /// Set the 'timestamp' field to the given value.
+    ///
+    /// A Unix timestamp is defined as the number of non-leap seconds since midnight UTC on
+    /// January 1, 1970.
+    ///
+    /// # Errors
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_timestamp(&mut self, value: i64) -> ParseResult<&mut Parsed> {
         set_if_consistent(&mut self.timestamp, value)?;
         Ok(self)
     }
 
-    /// Tries to set the [`offset`](#structfield.offset) field from given value.
+    /// Set the 'offset from local time to UTC' field to the given value.
+    ///
+    /// The offset is in seconds.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OUT_OF_RANGE` if `value` is ouside the range of an `i32`.
+    ///
+    /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
     pub fn set_offset(&mut self, value: i64) -> ParseResult<&mut Parsed> {
         set_if_consistent(&mut self.offset, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)?;
