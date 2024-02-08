@@ -568,9 +568,7 @@ impl Parsed {
             }
 
             // reconstruct date and time fields from timestamp
-            let ts = timestamp.checked_add(i64::from(offset)).ok_or(OUT_OF_RANGE)?;
-            let datetime = NaiveDateTime::from_timestamp(ts, 0);
-            let mut datetime = datetime.ok_or(OUT_OF_RANGE)?;
+            let mut datetime = NaiveDateTime::from_timestamp(timestamp, 0).ok_or(OUT_OF_RANGE)?;
 
             // fill year, ordinal, hour, minute and second fields from timestamp.
             // if existing fields are consistent, this will allow the full date/time reconstruction.
@@ -1278,7 +1276,7 @@ mod tests {
             parse!(FixedOffset::east(32400).unwrap(); timestamp: 1_420_000_000, offset: 32400),
             Ok(FixedOffset::east(32400)
                 .unwrap()
-                .with_ymd_and_hms(2014, 12, 31, 13, 26, 40)
+                .with_ymd_and_hms(2014, 12, 31, 04, 26, 40)
                 .unwrap())
         );
 
