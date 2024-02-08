@@ -11,13 +11,80 @@ use crate::{DateTime, Datelike, TimeDelta, Timelike, Weekday};
 
 /// Parsed parts of date and time. There are three classes of methods:
 ///
-/// - `set_*` methods try to set given field(s) while checking for the consistency.
-///   They do a basic range check.
+/// - `set_*` methods to set fields you have available. They do a basic range check, and if the
+///   same field is set more than once it is checked for consistency.
 ///
 /// - `to_*` methods try to make a concrete date and time value out of set fields.
-///   They fully check any remaining out-of-range conditions and inconsistent/impossible fields.
+///   They fully check that all fields are consistent and whether the date/datetime exists.
 ///
 /// - Methods to inspect the parsed fields.
+///
+/// # Resolution algorithm
+///
+/// Resolving date/time parts is littered with lots of corner cases, which is why common date/time
+/// parsers do not correctly implement it.
+///
+/// Chrono provides a complete and correct resolution algorithm via the `Parsed` type.
+///
+/// As an easy example, consider RFC 2822. The [RFC 2822 date and time format] has a day of week
+/// part, which should be consistent to other date parts when specified. But an `strptime`-based
+/// parse would happily accept inconsistent input:
+///
+/// ```
+/// >>> import time
+/// >>> time.strptime('Wed, 31 Dec 2014 04:26:40 +0000',
+///                   '%a, %d %b %Y %H:%M:%S +0000')
+/// time.struct_time(tm_year=2014, tm_mon=12, tm_mday=31,
+///                  tm_hour=4, tm_min=26, tm_sec=40,
+///                  tm_wday=2, tm_yday=365, tm_isdst=-1)
+/// >>> time.strptime('Thu, 31 Dec 2014 04:26:40 +0000',
+///                   '%a, %d %b %Y %H:%M:%S +0000')
+/// time.struct_time(tm_year=2014, tm_mon=12, tm_mday=31,
+///                  tm_hour=4, tm_min=26, tm_sec=40,
+///                  tm_wday=3, tm_yday=365, tm_isdst=-1)
+/// ```
+///
+/// [RFC 2822 date and time format]: https://tools.ietf.org/html/rfc2822#section-3.3
+///
+/// # Example
+///
+/// Let's see how `Parsed` resolves the values in the two RFC 2822 strings from before.
+///
+/// ```
+/// use chrono::format::{ParseErrorKind, Parsed};
+/// use chrono::Weekday;
+///
+/// let mut parsed = Parsed::new();
+/// parsed
+///     .set_weekday(Weekday::Wed)?
+///     .set_day(31)?
+///     .set_month(12)?
+///     .set_year(2014)?
+///     .set_hour(4)?
+///     .set_minute(26)?
+///     .set_second(40)?
+///     .set_offset(0)?;
+/// let dt = parsed.to_datetime()?;
+/// assert_eq!(dt.to_rfc2822(), "Wed, 31 Dec 2014 04:26:40 +0000");
+///
+/// let mut parsed = Parsed::new();
+/// parsed
+///     .set_weekday(Weekday::Thu)? // changed
+///     .set_day(31)?
+///     .set_month(12)?
+///     .set_year(2014)?
+///     .set_hour(4)?
+///     .set_minute(26)?
+///     .set_second(40)?
+///     .set_offset(0)?;
+/// let result = parsed.to_datetime();
+///
+/// assert!(result.is_err());
+/// if let Err(error) = result {
+///     assert_eq!(error.kind(), ParseErrorKind::Impossible);
+/// }
+/// # Ok::<(), chrono::ParseError>(())
+/// ```
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 pub struct Parsed {
     year: Option<i32>,
