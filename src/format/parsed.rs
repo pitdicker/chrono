@@ -305,7 +305,7 @@ impl Parsed {
                 // we should filter a negative full year first.
                 (Some(y), q, r @ Some(0..=99)) | (Some(y), q, r @ None) => {
                     if y < 0 {
-                        return Err(OUT_OF_RANGE);
+                        return Err(IMPOSSIBLE);
                     }
                     let q_ = y / 100;
                     let r_ = y % 100;
@@ -320,7 +320,7 @@ impl Parsed {
                 // reconstruct the full year. make sure that the result is always positive.
                 (None, Some(q), Some(r @ 0..=99)) => {
                     if q < 0 {
-                        return Err(OUT_OF_RANGE);
+                        return Err(IMPOSSIBLE);
                     }
                     let y = q.checked_mul(100).and_then(|v| v.checked_add(r));
                     Ok(Some(y.ok_or(OUT_OF_RANGE)?))
