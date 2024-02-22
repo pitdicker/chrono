@@ -13,6 +13,7 @@ use std::{cell::RefCell, collections::hash_map, env, fs, hash::Hasher, time::Sys
 use super::tz_info::TimeZone;
 use super::{FixedOffset, NaiveDateTime};
 use crate::{Datelike, LocalResult};
+use crate::offset::TzLookupError;
 
 pub(super) fn offset_from_utc_datetime(utc: &NaiveDateTime) -> LocalResult<FixedOffset> {
     offset(utc, false)
@@ -66,7 +67,7 @@ impl Source {
 }
 
 struct Cache {
-    zone: TimeZone,
+    zone: Result<TimeZone, TzLookupError>,
     source: Source,
     last_checked: SystemTime,
 }
@@ -77,13 +78,13 @@ const TZDB_LOCATION: &str = "/usr/share/lib/zoneinfo";
 #[cfg(not(any(target_os = "android", target_os = "aix")))]
 const TZDB_LOCATION: &str = "/usr/share/zoneinfo";
 
-fn fallback_timezone() -> Option<TimeZone> {
-    let tz_name = iana_time_zone::get_timezone().ok()?;
+fn fallback_timezone() -> Result<TimeZone, TzLookupError> {
+    let tz_name = iana_time_zone::get_timezone().map_err(|_| TzLookupError::TimeZoneUnknown)?;
     #[cfg(not(target_os = "android"))]
-    let bytes = fs::read(format!("{}/{}", TZDB_LOCATION, tz_name)).ok()?;
+    let bytes = fs::read(format!("{}/{}", TZDB_LOCATION, tz_name)).map_err(|_| TzLookupError::TimeZoneNotFound)?;
     #[cfg(target_os = "android")]
-    let bytes = android_tzdata::find_tz_data(&tz_name).ok()?;
-    TimeZone::from_tz_data(&bytes).ok()
+    let bytes = android_tzdata::find_tz_data(&tz_name).map_err(|_| TzLookupError::TimeZoneNotFound)?;
+    TimeZone::from_tz_data(&bytes).map_err(|_| TzLookupError::InvalidTimeZoneData)
 }
 
 impl Default for Cache {
@@ -99,8 +100,8 @@ impl Default for Cache {
     }
 }
 
-fn current_zone(var: Option<&str>) -> TimeZone {
-    TimeZone::local(var).ok().or_else(fallback_timezone).unwrap_or_else(TimeZone::utc)
+fn current_zone(var: Option<&str>) -> Result<TimeZone, TzLookupError> {
+    TimeZone::local(var).or_else(|_| fallback_timezone())
 }
 
 impl Cache {
@@ -148,16 +149,19 @@ impl Cache {
             }
         }
 
-        if !local {
-            let offset = self
-                .zone
-                .find_local_time_type(d.and_utc().timestamp())
-                .expect("unable to select local time type")
-                .offset();
+        let zone = match self.zone.as_ref() {
+            Ok(zone) => zone,
+            Err(e) => return LocalResult::Error(*e),
+        };
 
+        if !local {
+            let offset = match zone.find_local_time_type(d.timestamp()) {
+                Ok(ltt) => ltt.offset(),
+                Err(e) => return LocalResult::Error(e.into()),
+            };
             return match FixedOffset::east(offset) {
                 Ok(offset) => LocalResult::Single(offset),
-                Err(_) => LocalResult::None,
+                Err(_) => LocalResult::Error(TzLookupError::OutOfRange), // or invalid?
             };
         }
 
@@ -166,6 +170,6 @@ impl Cache {
         self.zone
             .find_local_time_type_from_local(d.and_utc().timestamp(), d.year())
             .expect("unable to select local time type")
-            .map(|o| FixedOffset::east(o.offset()).unwrap())
+            .map(|o| FixedOffset::east(o.offset()).unwrap()) // FIXME: report out of range offset
     }
 }

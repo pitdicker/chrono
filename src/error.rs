@@ -1,6 +1,8 @@
 //! Error type
 use core::fmt;
 
+use crate::offset::TzLookupError;
+
 /// Error type for date and time operations.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

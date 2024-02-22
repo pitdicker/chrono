@@ -339,6 +339,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
             .checked_add_months(months)?
             .and_local_timezone(Tz::from_offset(&self.offset))
             .single()
+            .ok()
     }
 
     /// Subtracts given `TimeDelta` from the current date and time.
@@ -376,6 +377,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
             .checked_sub_months(months)?
             .and_local_timezone(Tz::from_offset(&self.offset))
             .single()
+            .ok()
     }
 
     /// Add a duration in [`Days`] to the date part of the `DateTime`.
@@ -399,6 +401,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
         self.timezone()
             .from_local_datetime(&naive)
             .single()
+            .ok()
             .filter(|dt| dt <= &DateTime::<Utc>::MAX_UTC)
     }
 
@@ -420,6 +423,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
         self.timezone()
             .from_local_datetime(&naive)
             .single()
+            .ok()
             .filter(|dt| dt >= &DateTime::<Utc>::MIN_UTC)
     }
 
@@ -984,7 +988,7 @@ where
     F: FnMut(NaiveDateTime) -> Option<NaiveDateTime>,
 {
     f(dt.overflowing_naive_local())
-        .and_then(|datetime| dt.timezone().from_local_datetime(&datetime).single())
+        .and_then(|datetime| dt.timezone().from_local_datetime(&datetime).single().ok())
         .filter(|dt| dt >= &DateTime::<Utc>::MIN_UTC && dt <= &DateTime::<Utc>::MAX_UTC)
 }
 
@@ -1718,7 +1722,7 @@ impl TryFrom<SystemTime> for DateTime<Utc> {
                 }
             }
         };
-        Utc.timestamp(sec, nsec).single().ok_or(OutOfRange::new())
+        Utc.timestamp(sec, nsec).single().map_err(|_| OutOfRange::new())
     }
 }
 
