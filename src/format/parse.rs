@@ -570,7 +570,6 @@ mod tests {
     use crate::{DateTime, FixedOffset, NaiveDateTime, TimeZone, Timelike, Utc};
 
     const OUT_OF_RANGE: Error = Error::InvalidArgument;
-    const IMPOSSIBLE: Error = Error::Inconsistent;
     const INVALID: Error = Error::InvalidCharacter;
     const TOO_SHORT: Error = Error::TooShort;
     const TOO_LONG: Error = Error::TooLong;
@@ -731,7 +730,7 @@ mod tests {
         check("12341234", &[num(Year), num(Year)], p().set_year(1234));
         check("1234 1234", &[num(Year), num(Year)], p().set_year(1234));
         check("1234 1234", &[num(Year), Space(" "), num(Year)], p().set_year(1234));
-        check("1234 1235", &[num(Year), num(Year)], Err(IMPOSSIBLE));
+        check("1234 1235", &[num(Year), num(Year)], Err(Error::Inconsistent));
         check("1234 1234", &[num(Year), Literal("x"), num(Year)], Err(INVALID));
         check("1234x1234", &[num(Year), Literal("x"), num(Year)], p().set_year(1234));
         check("1234 x 1234", &[num(Year), Literal("x"), num(Year)], Err(INVALID));
@@ -1600,15 +1599,15 @@ mod tests {
             ("11 Sep 2001 09:45:00 +0000", Ok(ymd_hmsn(2001, 9, 11, 9, 45, 0, 0, 0))),
             ("11 Sep 2001 09:45:00 EST", Ok(ymd_hmsn(2001, 9, 11, 9, 45, 0, 0, -5))),
             ("11 Sep 2001 09:45:00 GMT", Ok(ymd_hmsn(2001, 9, 11, 9, 45, 0, 0, 0))),
-            ("30 Feb 2015 17:35:20 -0800", Err(OUT_OF_RANGE)), // bad day of month
-            ("Tue, 20 Jan 2015", Err(TOO_SHORT)),              // omitted fields
-            ("Tue, 20 Avr 2015 17:35:20 -0800", Err(INVALID)), // bad month name
-            ("Tue, 20 Jan 2015 25:35:20 -0800", Err(OUT_OF_RANGE)), // bad hour
-            ("Tue, 20 Jan 2015 7:35:20 -0800", Err(INVALID)),  // bad # of digits in hour
-            ("Tue, 20 Jan 2015 17:65:20 -0800", Err(OUT_OF_RANGE)), // bad minute
-            ("Tue, 20 Jan 2015 17:35:90 -0800", Err(OUT_OF_RANGE)), // bad second
-            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(OUT_OF_RANGE)), // bad offset
-            ("6 Jun 1944 04:00:00Z", Err(INVALID)),            // bad offset (zulu not allowed)
+            ("30 Feb 2015 17:35:20 -0800", Err(Error::DoesNotExist)), // bad day of month
+            ("Tue, 20 Jan 2015", Err(TOO_SHORT)),                     // omitted fields
+            ("Tue, 20 Avr 2015 17:35:20 -0800", Err(INVALID)),        // bad month name
+            ("Tue, 20 Jan 2015 25:35:20 -0800", Err(OUT_OF_RANGE)),   // bad hour
+            ("Tue, 20 Jan 2015 7:35:20 -0800", Err(INVALID)),         // bad # of digits in hour
+            ("Tue, 20 Jan 2015 17:65:20 -0800", Err(OUT_OF_RANGE)),   // bad minute
+            ("Tue, 20 Jan 2015 17:35:90 -0800", Err(OUT_OF_RANGE)),   // bad second
+            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(OUT_OF_RANGE)),   // bad offset
+            ("6 Jun 1944 04:00:00Z", Err(INVALID)), // bad offset (zulu not allowed)
             // named timezones that have specific timezone offsets
             // see https://www.rfc-editor.org/rfc/rfc2822#section-4.3
             ("Tue, 20 Jan 2015 17:35:20 GMT", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, 0))),
@@ -1768,12 +1767,12 @@ mod tests {
             ("99-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),       // bad year format
             ("99999-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
             ("-2000-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
-            ("2015-02-30T17:35:20-08:00", Err(Error::InvalidArgument)), // bad day of month value
+            ("2015-02-30T17:35:20-08:00", Err(Error::DoesNotExist)), // bad day of month value
             ("2015-01-20T25:35:20-08:00", Err(Error::InvalidArgument)), // bad hour value
             ("2015-01-20T17:65:20-08:00", Err(Error::InvalidArgument)), // bad minute value
             ("2015-01-20T17:35:90-08:00", Err(Error::InvalidArgument)), // bad second value
             ("2015-01-20T17:35:20-24:00", Err(Error::InvalidArgument)), // bad offset value
-            ("15-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),  // bad year format
+            ("15-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)), // bad year format
             ("15-01-20T17:35:20-08:00:00", Err(Error::InvalidCharacter)), // bad year format, bad offset format
             ("2015-01-20T17:35:2008:00", Err(Error::InvalidCharacter)),   // missing offset sign
             ("2015-01-20T17:35:20 08:00", Err(Error::InvalidCharacter)),  // missing offset sign

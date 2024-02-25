@@ -386,8 +386,6 @@ pub type ParseResult<T> = Result<T, ParseError>;
 
 // to be used in this module and submodules
 pub(crate) const OUT_OF_RANGE: ParseError = ParseError::InvalidArgument;
-const IMPOSSIBLE: ParseError = ParseError::Inconsistent;
-const NOT_ENOUGH: ParseError = ParseError::Ambiguous;
 const INVALID: ParseError = ParseError::InvalidCharacter;
 const TOO_SHORT: ParseError = ParseError::TooShort;
 const BAD_FORMAT: ParseError = ParseError::BadFormat;
