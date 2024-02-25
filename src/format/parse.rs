@@ -9,8 +9,8 @@ use core::str;
 use core::usize;
 
 use super::scan;
+use super::ParseError;
 use super::{Fixed, InternalFixed, InternalInternal, Item, Numeric, Pad, Parsed};
-use super::{ParseError, ParseResult};
 use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_SHORT};
 use crate::{DateTime, Error, FixedOffset, Weekday};
 
@@ -44,7 +44,7 @@ fn set_weekday_with_number_from_monday(p: &mut Parsed, v: i64) -> Result<&mut Pa
 /// e.g. `Fri, 21 Nov 1997 09:55:06 -0600`
 ///
 /// This function allows arbitrary intermixed whitespace per RFC 2822 appendix A.5
-fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a str, ())> {
+fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<(&'a str, ()), ParseError> {
     macro_rules! try_consume {
         ($e:expr) => {{
             let (s_, v) = $e?;
@@ -188,7 +188,7 @@ pub(crate) fn parse_rfc3339(s: &str) -> Result<DateTime<FixedOffset>, Error> {
     parsed.to_datetime()
 }
 
-fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<&'a str> {
+fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a str, ParseError> {
     macro_rules! try_consume {
         ($e:expr) => {{
             let (s_, v) = $e?;
@@ -523,7 +523,10 @@ where
 ///   `DateTime<Utc>`.
 /// - There can be spaces between any of the components.
 /// - The colon in the offset may be missing.
-fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a str, ())> {
+fn parse_rfc3339_relaxed<'a>(
+    parsed: &mut Parsed,
+    mut s: &'a str,
+) -> Result<(&'a str, ()), ParseError> {
     const DATE_ITEMS: &[Item<'static>] = &[
         Item::Numeric(Numeric::Year, Pad::Zero),
         Item::Space(""),

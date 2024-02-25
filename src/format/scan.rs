@@ -5,7 +5,7 @@
  * Various scanning routines for the parser.
  */
 
-use super::{ParseResult, INVALID, OUT_OF_RANGE, TOO_SHORT};
+use super::{ParseError, INVALID, OUT_OF_RANGE, TOO_SHORT};
 use crate::Weekday;
 
 /// Tries to parse the non-negative number from `min` to `max` digits.
@@ -14,7 +14,12 @@ use crate::Weekday;
 /// More than `max` digits are consumed up to the first `max` digits.
 /// Any number that does not fit in `i64` is an error.
 #[inline]
-pub(super) fn number(s: &str, min: usize, max: usize, positive: bool) -> ParseResult<(&str, i64)> {
+pub(super) fn number(
+    s: &str,
+    min: usize,
+    max: usize,
+    positive: bool,
+) -> Result<(&str, i64), ParseError> {
     assert!(min <= max);
 
     // We are only interested in ascii numbers, so we can work with the `str` as bytes. We stop on
@@ -55,7 +60,7 @@ pub(super) fn number(s: &str, min: usize, max: usize, positive: bool) -> ParseRe
 
 /// Tries to consume at least one digits as a fractional second.
 /// Returns the number of whole nanoseconds (0--999,999,999).
-pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
+pub(super) fn nanosecond(s: &str) -> Result<(&str, i64), ParseError> {
     // record the number of digits consumed for later scaling.
     let origlen = s.len();
     let (s, v) = number(s, 1, 9, true)?;
@@ -74,7 +79,7 @@ pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
 
 /// Tries to consume a fixed number of digits as a fractional second.
 /// Returns the number of whole nanoseconds (0--999,999,999).
-pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> ParseResult<(&str, i64)> {
+pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> Result<(&str, i64), ParseError> {
     // record the number of digits consumed for later scaling.
     let (s, v) = number(s, digits, digits, true)?;
 
@@ -87,7 +92,7 @@ pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> ParseResult<(&str, i64
 }
 
 /// Tries to parse the month index (0 through 11) with the first three ASCII letters.
-pub(super) fn short_month0(s: &str) -> ParseResult<(&str, u8)> {
+pub(super) fn short_month0(s: &str) -> Result<(&str, u8), ParseError> {
     if s.len() < 3 {
         return Err(TOO_SHORT);
     }
@@ -111,7 +116,7 @@ pub(super) fn short_month0(s: &str) -> ParseResult<(&str, u8)> {
 }
 
 /// Tries to parse the weekday with the first three ASCII letters.
-pub(super) fn short_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
+pub(super) fn short_weekday(s: &str) -> Result<(&str, Weekday), ParseError> {
     if s.len() < 3 {
         return Err(TOO_SHORT);
     }
@@ -131,7 +136,7 @@ pub(super) fn short_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
 
 /// Tries to parse the month index (0 through 11) with short or long month names.
 /// It prefers long month names to short month names when both are possible.
-pub(super) fn short_or_long_month0(s: &str) -> ParseResult<(&str, u8)> {
+pub(super) fn short_or_long_month0(s: &str) -> Result<(&str, u8), ParseError> {
     // lowercased month names, minus first three chars
     static LONG_MONTH_SUFFIXES: [&[u8]; 12] = [
         b"uary", b"ruary", b"ch", b"il", b"", b"e", b"y", b"ust", b"tember", b"ober", b"ember",
@@ -151,7 +156,7 @@ pub(super) fn short_or_long_month0(s: &str) -> ParseResult<(&str, u8)> {
 
 /// Tries to parse the weekday with short or long weekday names.
 /// It prefers long weekday names to short weekday names when both are possible.
-pub(super) fn short_or_long_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
+pub(super) fn short_or_long_weekday(s: &str) -> Result<(&str, Weekday), ParseError> {
     // lowercased weekday names, minus first three chars
     static LONG_WEEKDAY_SUFFIXES: [&[u8]; 7] =
         [b"day", b"sday", b"nesday", b"rsday", b"day", b"urday", b"day"];
@@ -168,7 +173,7 @@ pub(super) fn short_or_long_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
 }
 
 /// Tries to consume exactly one given character.
-pub(super) fn char(s: &str, c1: u8) -> ParseResult<&str> {
+pub(super) fn char(s: &str, c1: u8) -> Result<&str, ParseError> {
     match s.as_bytes().first() {
         Some(&c) if c == c1 => Ok(&s[1..]),
         Some(_) => Err(INVALID),
@@ -177,7 +182,7 @@ pub(super) fn char(s: &str, c1: u8) -> ParseResult<&str> {
 }
 
 /// Tries to consume one or more whitespace.
-pub(super) fn space(s: &str) -> ParseResult<&str> {
+pub(super) fn space(s: &str) -> Result<&str, ParseError> {
     let s_ = s.trim_start();
     if s_.len() < s.len() {
         Ok(s_)
@@ -202,7 +207,7 @@ pub(super) fn s_next(s: &str) -> &str {
 
 /// Consumes one colon char `:` if it is at the front of `s`.
 /// Always returns `Ok(s)`.
-pub(super) fn consume_colon_maybe(mut s: &str) -> ParseResult<&str> {
+pub(super) fn consume_colon_maybe(mut s: &str) -> Result<&str, ParseError> {
     if s.is_empty() {
         // nothing consumed
         return Ok(s);
@@ -236,9 +241,9 @@ pub(super) fn timezone_offset<F>(
     allow_zulu: bool,
     allow_missing_minutes: bool,
     allow_tz_minus_sign: bool,
-) -> ParseResult<(&str, i32)>
+) -> Result<(&str, i32), ParseError>
 where
-    F: FnMut(&str) -> ParseResult<&str>,
+    F: FnMut(&str) -> Result<&str, ParseError>,
 {
     if allow_zulu {
         if let Some(&b'Z' | &b'z') = s.as_bytes().first() {
@@ -246,7 +251,7 @@ where
         }
     }
 
-    fn digits(s: &str) -> ParseResult<u8> {
+    fn digits(s: &str) -> Result<u8, ParseError> {
         let b = s.as_bytes();
         if b.len() < 2 {
             return Err(TOO_SHORT);
@@ -302,7 +307,7 @@ where
 /// See [RFC 2822 Section 4.3].
 ///
 /// [RFC 2822 Section 4.3]: https://tools.ietf.org/html/rfc2822#section-4.3
-pub(super) fn timezone_offset_2822(s: &str) -> ParseResult<(&str, i32)> {
+pub(super) fn timezone_offset_2822(s: &str) -> Result<(&str, i32), ParseError> {
     // tries to parse legacy time zone names
     let upto = s.as_bytes().iter().position(|&c| !c.is_ascii_alphabetic()).unwrap_or(s.len());
     if upto > 0 {
@@ -341,7 +346,7 @@ pub(super) fn timezone_offset_2822(s: &str) -> ParseResult<(&str, i32)> {
 /// Tries to consume an RFC2822 comment including preceding ` `.
 ///
 /// Returns the remaining string after the closing parenthesis.
-pub(super) fn comment_2822(s: &str) -> ParseResult<(&str, ())> {
+pub(super) fn comment_2822(s: &str) -> Result<(&str, ()), ParseError> {
     use CommentState::*;
 
     let s = s.trim_start();

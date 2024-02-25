@@ -381,9 +381,6 @@ impl<'a> Item<'a> {
 /// An error from the `parse` function.
 pub type ParseError = Error;
 
-/// Same as `Result<T, ParseError>`.
-pub type ParseResult<T> = Result<T, ParseError>;
-
 // to be used in this module and submodules
 pub(crate) const OUT_OF_RANGE: ParseError = ParseError::InvalidArgument;
 const INVALID: ParseError = ParseError::InvalidCharacter;
