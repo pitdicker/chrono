@@ -192,11 +192,9 @@ impl Parsed {
         Parsed::default()
     }
 
-    /// Set the 'year' field to the given value.
+    /// Set the [`year`](Parsed::year) field to the given value.
     ///
     /// The value can be negative, unlike the 'year divided by 100' and 'year modulo 100' fields.
-    ///
-    /// See also [`year()`](Parsed::year).
     ///
     /// # Errors
     ///
@@ -208,9 +206,7 @@ impl Parsed {
         set_if_consistent(&mut self.year, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)
     }
 
-    /// Set the 'year divided by 100' field to the given value.
-    ///
-    /// See also [`year_div_100()`](Parsed::year_div_100).
+    /// Set the [`year_div_100`](Parsed::year_div_100) field to the given value.
     ///
     /// # Errors
     ///
@@ -225,15 +221,13 @@ impl Parsed {
         set_if_consistent(&mut self.year_div_100, value as i32)
     }
 
-    /// Set the 'year modulo 100' field to the given value.
+    /// Set the [`year_mod_100`](Parsed::year_mod_100) field to the given value.
     ///
     /// When set it implies that the year is not negative.
     ///
     /// If this field is set while the 'year divided by 100' field is missing (and the full 'year'
     /// field is also not set), it assumes a default value for the 'year divided by 100' field.
     /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
-    ///
-    /// See also [`year_mod_100()`](Parsed::year_mod_100).
     ///
     /// # Errors
     ///
@@ -248,11 +242,10 @@ impl Parsed {
         set_if_consistent(&mut self.year_mod_100, value as i32)
     }
 
-    /// Set the 'year' field that is part of an [ISO 8601 week date] to the given value.
+    /// Set the [`isoyear`](Parsed::isoyear) field, that is part of an [ISO 8601 week date], to the
+    /// given value.
     ///
     /// The value can be negative, unlike the 'year divided by 100' and 'year modulo 100' fields.
-    ///
-    /// See also [`isoyear()`](Parsed::isoyear).
     ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
@@ -266,10 +259,8 @@ impl Parsed {
         set_if_consistent(&mut self.isoyear, i32::try_from(value).map_err(|_| OUT_OF_RANGE)?)
     }
 
-    /// Set the 'year divided by 100' field that is part of an [ISO 8601 week date] to the given
-    /// value.
-    ///
-    /// See also [`isoyear_div_100()`](Parsed::isoyear_div_100).
+    /// Set the [`isoyear_div_100`](Parsed::isoyear_div_100) field, that is part of an
+    /// [ISO 8601 week date], to the given value.
     ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
@@ -286,15 +277,14 @@ impl Parsed {
         set_if_consistent(&mut self.isoyear_div_100, value as i32)
     }
 
-    /// Set the 'year modulo 100' that is part of an [ISO 8601 week date] field to the given value.
+    /// Set the [`isoyear_mod_100`](Parsed::isoyear_mod_100) field, that is part of an
+    /// [ISO 8601 week date], to the given value.
     ///
     /// When set it implies that the year is not negative.
     ///
     /// If this field is set while the 'year divided by 100' field is missing (and the full `year`
     /// field is also not set), it assumes a default value for the 'year divided by 100' field.
     /// The default is 19 when `year_mod_100 >= 70` and 20 otherwise.
-    ///
-    /// See also [`isoyear_mod_100()`](Parsed::isoyear_mod_100).
     ///
     /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
@@ -311,9 +301,7 @@ impl Parsed {
         set_if_consistent(&mut self.isoyear_mod_100, value as i32)
     }
 
-    /// Set the 'month' field to the given value.
-    ///
-    /// See also [`month()`](Parsed::month).
+    /// Set the [`month`](Parsed::month) field to the given value.
     ///
     /// # Errors
     ///
@@ -328,11 +316,9 @@ impl Parsed {
         set_if_consistent(&mut self.month, value as u32)
     }
 
-    /// Set the 'week number starting with Sunday' field to the given value.
+    /// Set the [`week_from_sun`](Parsed::week_from_sun) week number field to the given value.
     ///
     /// Week 1 starts at the first Sunday of January.
-    ///
-    /// See also [`week_from_sun()`](Parsed::week_from_sun).
     ///
     /// # Errors
     ///
@@ -347,11 +333,10 @@ impl Parsed {
         set_if_consistent(&mut self.week_from_sun, value as u32)
     }
 
+    /// Set the [`week_from_mon`](Parsed::week_from_mon) week number field to the given value.
     /// Set the 'week number starting with Monday' field to the given value.
     ///
     /// Week 1 starts at the first Monday of January.
-    ///
-    /// See also [`week_from_mon()`](Parsed::week_from_mon).
     ///
     /// # Errors
     ///
@@ -366,11 +351,9 @@ impl Parsed {
         set_if_consistent(&mut self.week_from_mon, value as u32)
     }
 
-    /// Set the '[ISO 8601 week number]' field to the given value.
+    /// Set the [`isoweek`](Parsed::isoweek) field for an [ISO 8601 week date] to the given value.
     ///
-    /// See also [`isoweek()`](Parsed::isoweek).
-    ///
-    /// [ISO 8601 week number]: crate::NaiveDate#week-date
+    /// [ISO 8601 week date]: crate::NaiveDate#week-date
     ///
     /// # Errors
     ///
@@ -385,9 +368,7 @@ impl Parsed {
         set_if_consistent(&mut self.isoweek, value as u32)
     }
 
-    /// Set the 'day of the week' field to the given value.
-    ///
-    /// See also [`weekday()`](Parsed::weekday).
+    /// Set the [`weekday`](Parsed::weekday) field to the given value.
     ///
     /// # Errors
     ///
@@ -397,9 +378,7 @@ impl Parsed {
         set_if_consistent(&mut self.weekday, value)
     }
 
-    /// Set the 'ordinal' (day of the year) field to the given value.
-    ///
-    /// See also [`ordinal()`](Parsed::ordinal).
+    /// Set the [`ordinal`](Parsed::ordinal) (day of the year) field to the given value.
     ///
     /// # Errors
     ///
@@ -414,9 +393,7 @@ impl Parsed {
         set_if_consistent(&mut self.ordinal, value as u32)
     }
 
-    /// Set the 'day of the month' field to the given value.
-    ///
-    /// See also [`day()`](Parsed::day).
+    /// Set the [`day`](Parsed::day) of the month field to the given value.
     ///
     /// # Errors
     ///
@@ -431,11 +408,9 @@ impl Parsed {
         set_if_consistent(&mut self.day, value as u32)
     }
 
-    /// Set the 'am/pm' field to the given value.
+    /// Set the [`hour_div_12`](Parsed::hour_div_12) am/pm field to the given value.
     ///
     /// `false` indicates AM and `true` indicates PM.
-    ///
-    /// See also [`hour_div_12()`](Parsed::hour_div_12).
     ///
     /// # Errors
     ///
@@ -445,12 +420,11 @@ impl Parsed {
         set_if_consistent(&mut self.hour_div_12, value as u32)
     }
 
-    /// Set the 'hour number in 12-hour clocks' field to the given value.
+    /// Set the [`hour_mod_12`](Parsed::hour_mod_12) field, for the hour number in 12-hour clocks,
+    /// to the given value.
     ///
     /// Value must be in the canonical range of 1-12.
     /// It will internally be stored as 0-11 (`value % 12`).
-    ///
-    /// See also [`hour_mod_12()`](Parsed::hour_mod_12).
     ///
     /// # Errors
     ///
@@ -468,11 +442,8 @@ impl Parsed {
         set_if_consistent(&mut self.hour_mod_12, value as u32)
     }
 
-    /// Set the 'hour' field to the given value.
-    ///
-    /// Internally this sets the 'hour modulo 12' and 'am/pm' fields.
-    ///
-    /// See also [`hour_div_12()`](Parsed::hour_div_12) and [`hour_mod_12()`](Parsed::hour_mod_12).
+    /// Set the [`hour_div_12`](Parsed::hour_div_12) and [`hour_mod_12`](Parsed::hour_mod_12)
+    /// fields to the given value for a 24-hour clock.
     ///
     /// # Errors
     ///
@@ -491,9 +462,7 @@ impl Parsed {
         set_if_consistent(&mut self.hour_mod_12, hour_mod_12)
     }
 
-    /// Set the 'minute' field to the given value.
-    ///
-    /// See also [`minute()`](Parsed::minute).
+    /// Set the [`minute`](Parsed::minute) field to the given value.
     ///
     /// # Errors
     ///
@@ -508,11 +477,9 @@ impl Parsed {
         set_if_consistent(&mut self.minute, value as u32)
     }
 
-    /// Set the 'second' field to the given value.
+    /// Set the [`second`](Parsed::second) field to the given value.
     ///
     /// The value can be 60 in the case of a leap second.
-    ///
-    /// See also [`second()`](Parsed::second).
     ///
     /// # Errors
     ///
@@ -527,11 +494,9 @@ impl Parsed {
         set_if_consistent(&mut self.second, value as u32)
     }
 
-    /// Set the 'nanosecond' field to the given value.
+    /// Set the [`nanosecond`](Parsed::nanosecond) field to the given value.
     ///
     /// This is the number of nanoseconds since the whole second.
-    ///
-    /// See also [`nanosecond()`](Parsed::nanosecond).
     ///
     /// # Errors
     ///
@@ -546,12 +511,10 @@ impl Parsed {
         set_if_consistent(&mut self.nanosecond, value as u32)
     }
 
-    /// Set the 'timestamp' field to the given value.
+    /// Set the [`timestamp`](Parsed::timestamp) field to the given value.
     ///
     /// A Unix timestamp is defined as the number of non-leap seconds since midnight UTC on
     /// January 1, 1970.
-    ///
-    /// See also [`timestamp()`](Parsed::timestamp).
     ///
     /// # Errors
     ///
@@ -561,11 +524,9 @@ impl Parsed {
         set_if_consistent(&mut self.timestamp, value)
     }
 
-    /// Set the 'offset from local time to UTC' field to the given value.
+    /// Set the [`offset`](Parsed::offset) field to the given value.
     ///
-    /// The offset is in seconds.
-    ///
-    /// See also [`offset()`](Parsed::offset).
+    /// The offset is in seconds from local time to UTC.
     ///
     /// # Errors
     ///
