@@ -53,6 +53,9 @@ pub enum Error {
     /// All formatting items have been read but there is a remaining input.
     TooLong,
 
+    /// Lookup of a local datetime in a timezone failed.
+    TzLookupFailure(TzLookupError),
+
     /// The format string contains a formatting specifier that is not supported.
     ///
     /// Contains the byte index of the formatting specifier within the format string.
@@ -76,6 +79,7 @@ impl fmt::Display for Error {
             }
             Error::OutOfRange => write!(f, "date outside of the supported range"),
             Error::TooLong => write!(f, "trailing input"),
+            Error::TzLookupFailure(_) => write!(f, "time zone lookup failure"),
             Error::UnsupportedSpecifier(_) => {
                 write!(f, "format string contains a formatting specifier that is not supported")
             }
@@ -84,4 +88,139 @@ impl fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl std::error::Error for Error  {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::TzLookupFailure(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+/// Error type for time zone lookups.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TzLookupError {
+    /// Unable to determine the local time zone of the os/platform.
+    TimeZoneUnknown,
+
+    /// Error returned by a platform API.
+    OsError(OsError),
+
+    /// `TZ` environment variable set to an invalid value.
+    InvalidTzString,
+
+    /// Unable to locate an IANA time zone database.
+    NoTzdb,
+
+    /// The specified time zone is not found (in the database).
+    TimeZoneNotFound,
+
+    /// There is an error when reading/validating the time zone data.
+    InvalidTimeZoneData,
+
+    /// The result would be out of range.
+    OutOfRange,
+}
+
+impl fmt::Display for TzLookupError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TzLookupError::TimeZoneUnknown => write!(f, "unable to determine the local time zone"),
+            TzLookupError::OsError(_) => write!(f, "platform API error"),
+            TzLookupError::InvalidTzString => {
+                write!(f, "`TZ` environment variable set to an invalid value")
+            }
+            TzLookupError::NoTzdb => write!(f, "unable to locate an IANA time zone database"),
+            TzLookupError::TimeZoneNotFound => write!(f, "the specified time zone is not found"),
+            TzLookupError::InvalidTimeZoneData => {
+                write!(f, "error when reading/validating the time zone data")
+            }
+            TzLookupError::OutOfRange => write!(f, "date or offset outside of the supported range"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for TzLookupError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TzLookupError::OsError(os_error) => Some(os_error),
+            _ => None,
+        }
+    }
+}
+
+impl From<TzLookupError> for Error {
+    fn from(error: TzLookupError) -> Self {
+        Error::TzLookupFailure(error)
+    }
+}
+
+impl TzLookupError {
+    /// TODO
+    pub fn last_os_error() -> Self {
+        let raw = std::io::Error::last_os_error().raw_os_error().unwrap();
+        TzLookupError::OsError(OsError((raw >> 16) as u16, raw as u16))
+    }
+}
+
+impl From<OsError> for TzLookupError {
+    fn from(error: OsError) -> Self {
+        TzLookupError::OsError(error)
+    }
+}
+
+/// Error that originates from the underlying OS/platform APIs.
+//
+// We encode an `i32` as two `u16`s, in order to give this type an alignment of 2.
+// This will cause the size of `TzLookupError` to become 6 bytes instead of 8, and `Error` to be
+// 8 bytes instead of 12.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct OsError(u16, u16);
+
+impl fmt::Display for OsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&std::io::Error::from(*self), f)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for OsError {}
+
+#[cfg(feature = "std")]
+impl From<OsError> for std::io::Error {
+    fn from(error: OsError) -> Self {
+        let raw = ((error.0 as u32) << 16 | error.1 as u32) as i32;
+        std::io::Error::from_raw_os_error(raw)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error as StdError;
+
+    use crate::error::{Error, OsError, TzLookupError};
+
+    #[test]
+    fn test_error_size() {
+        use core::mem::size_of;
+        assert_eq!(size_of::<TzLookupError>(), 6);
+        assert_eq!(size_of::<Error>(), 8);
+        assert_eq!(size_of::<Option<TzLookupError>>(), 6);
+        assert_eq!(size_of::<Option<Error>>(), 8);
+    }
+
+    #[test]
+    fn test_error_msg() {
+        let err = Error::TzLookupFailure(TzLookupError::OsError(OsError(0, 2)));
+        println!("Error: {}", err);
+        if let Some(err) = err.source() {
+            println!("    source: {}", err);
+            if let Some(err) = err.source() {
+                println!("    source: {}", err);
+            }
+        }
+        panic!();
+    }
+}
