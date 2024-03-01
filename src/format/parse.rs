@@ -12,7 +12,7 @@ use super::scan;
 use super::{Fixed, InternalFixed, InternalInternal, Item, Numeric, Pad, Parsed};
 use super::{ParseError, ParseResult};
 use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_LONG, TOO_SHORT};
-use crate::{Error, Weekday};
+use crate::{DateTime, Error, FixedOffset, Weekday};
 
 fn set_weekday_with_num_days_from_sunday(p: &mut Parsed, v: i64) -> Result<&mut Parsed, Error> {
     p.set_weekday(match v {
@@ -156,7 +156,39 @@ fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a st
     Ok((s, ()))
 }
 
-pub(crate) fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a str, ())> {
+/// Parses an RFC 3339 date-and-time string into a `DateTime<FixedOffset>` value.
+///
+/// RFC 3339 syntax from Section 5.6:
+///
+/// ```text
+/// date-fullyear  = 4DIGIT
+/// date-month     = 2DIGIT ; 01-12
+/// date-mday      = 2DIGIT ; 01-28, 01-29, 01-30, 01-31 based on month/year
+/// time-hour      = 2DIGIT ; 00-23
+/// time-minute    = 2DIGIT ; 00-59
+/// time-second    = 2DIGIT ; 00-58, 00-59, 00-60 based on leap second rules
+/// time-secfrac   = "." 1*DIGIT
+/// time-numoffset = ("+" / "-") time-hour ":" time-minute
+/// time-offset    = "Z" / time-numoffset
+/// partial-time   = time-hour ":" time-minute ":" time-second [time-secfrac]
+/// full-date      = date-fullyear "-" date-month "-" date-mday
+/// full-time      = partial-time time-offset
+/// date-time      = full-date "T" full-time
+/// ```
+///
+/// - The "T" and "Z" characters in this syntax may alternatively be lower case "t" or "z".
+/// - For readability a full-date and a full-time may be separated by a space character.
+/// - Any number of fractional digits for seconds is allowed. We skip digits past first 9 digits.
+pub(crate) fn parse_rfc3339(s: &str) -> Result<DateTime<FixedOffset>, Error> {
+    let mut parsed = Parsed::new();
+    let s = parse_rfc3339_inner(&mut parsed, s)?;
+    if !s.is_empty() {
+        return Err(Error::TooLong);
+    }
+    parsed.to_datetime()
+}
+
+fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<&'a str> {
     macro_rules! try_consume {
         ($e:expr) => {{
             let (s_, v) = $e?;
@@ -164,35 +196,6 @@ pub(crate) fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseRes
             v
         }};
     }
-
-    // an adapted RFC 3339 syntax from Section 5.6:
-    //
-    // date-fullyear  = 4DIGIT
-    // date-month     = 2DIGIT ; 01-12
-    // date-mday      = 2DIGIT ; 01-28, 01-29, 01-30, 01-31 based on month/year
-    // time-hour      = 2DIGIT ; 00-23
-    // time-minute    = 2DIGIT ; 00-59
-    // time-second    = 2DIGIT ; 00-58, 00-59, 00-60 based on leap second rules
-    // time-secfrac   = "." 1*DIGIT
-    // time-numoffset = ("+" / "-") time-hour ":" time-minute
-    // time-offset    = "Z" / time-numoffset
-    // partial-time   = time-hour ":" time-minute ":" time-second [time-secfrac]
-    // full-date      = date-fullyear "-" date-month "-" date-mday
-    // full-time      = partial-time time-offset
-    // date-time      = full-date "T" full-time
-    //
-    // some notes:
-    //
-    // - quoted characters can be in any mixture of lower and upper cases.
-    //
-    // - it may accept any number of fractional digits for seconds.
-    //   for Chrono, this means that we should skip digits past first 9 digits.
-    //
-    // - unlike RFC 2822, the valid offset ranges from -23:59 to +23:59.
-    //   note that this restriction is unique to RFC 3339 and not ISO 8601.
-    //   since this is not a typical Chrono behavior, we check it earlier.
-    //
-    // - For readability a full-date and a full-time may be separated by a space character.
 
     parsed.set_year(try_consume!(scan::number(s, 4, 4, true)))?;
     s = scan::char(s, b'-')?;
@@ -227,7 +230,7 @@ pub(crate) fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseRes
     }
     parsed.set_offset(i64::from(offset))?;
 
-    Ok((s, ()))
+    Ok(s)
 }
 
 /// Tries to parse given string into `parsed` with given formatting items.
@@ -1753,45 +1756,45 @@ mod tests {
                 Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, -8)),
             ), // too small with MINUS SIGN (U+2212)
             ("2015-01-20 17:35:20-08:00", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, -8))), // without 'T'
-            ("2015/01/20T17:35:20.001-08:00", Err(INVALID)), // wrong separator char YMD
-            ("2015-01-20T17-35-20.001-08:00", Err(INVALID)), // wrong separator char HMS
-            ("-01-20T17:35:20-08:00", Err(INVALID)),         // missing year
-            ("99-01-20T17:35:20-08:00", Err(INVALID)),       // bad year format
-            ("99999-01-20T17:35:20-08:00", Err(INVALID)),    // bad year value
-            ("-2000-01-20T17:35:20-08:00", Err(INVALID)),    // bad year value
-            ("2015-02-30T17:35:20-08:00", Err(OUT_OF_RANGE)), // bad day of month value
-            ("2015-01-20T25:35:20-08:00", Err(OUT_OF_RANGE)), // bad hour value
-            ("2015-01-20T17:65:20-08:00", Err(OUT_OF_RANGE)), // bad minute value
-            ("2015-01-20T17:35:90-08:00", Err(OUT_OF_RANGE)), // bad second value
-            ("2015-01-20T17:35:20-24:00", Err(OUT_OF_RANGE)), // bad offset value
-            ("15-01-20T17:35:20-08:00", Err(INVALID)),       // bad year format
-            ("15-01-20T17:35:20-08:00:00", Err(INVALID)),    // bad year format, bad offset format
-            ("2015-01-20T17:35:2008:00", Err(INVALID)),      // missing offset sign
-            ("2015-01-20T17:35:20 08:00", Err(INVALID)),     // missing offset sign
-            ("2015-01-20T17:35:20Zulu", Err(TOO_LONG)),      // bad offset format
-            ("2015-01-20T17:35:20 Zulu", Err(INVALID)),      // bad offset format
-            ("2015-01-20T17:35:20GMT", Err(INVALID)),        // bad offset format
-            ("2015-01-20T17:35:20 GMT", Err(INVALID)),       // bad offset format
-            ("2015-01-20T17:35:20+GMT", Err(INVALID)),       // bad offset format
-            ("2015-01-20T17:35:20++08:00", Err(INVALID)),    // bad offset format
-            ("2015-01-20T17:35:20--08:00", Err(INVALID)),    // bad offset format
-            ("2015-01-20T17:35:20−−08:00", Err(INVALID)), // bad offset format with MINUS SIGN (U+2212)
-            ("2015-01-20T17:35:20±08:00", Err(INVALID)),  // bad offset sign
-            ("2015-01-20T17:35:20-08-00", Err(INVALID)),  // bad offset separator
-            ("2015-01-20T17:35:20-08;00", Err(INVALID)),  // bad offset separator
-            ("2015-01-20T17:35:20-0800", Err(INVALID)),   // bad offset separator
-            ("2015-01-20T17:35:20-08:0", Err(TOO_SHORT)), // bad offset minutes
-            ("2015-01-20T17:35:20-08:AA", Err(INVALID)),  // bad offset minutes
-            ("2015-01-20T17:35:20-08:ZZ", Err(INVALID)),  // bad offset minutes
-            ("2015-01-20T17:35:20.001-08 : 00", Err(INVALID)), // bad offset separator
-            ("2015-01-20T17:35:20-08:00:00", Err(TOO_LONG)), // bad offset format
-            ("2015-01-20T17:35:20+08:", Err(TOO_SHORT)),  // bad offset format
-            ("2015-01-20T17:35:20-08:", Err(TOO_SHORT)),  // bad offset format
-            ("2015-01-20T17:35:20−08:", Err(TOO_SHORT)), // bad offset format with MINUS SIGN (U+2212)
-            ("2015-01-20T17:35:20-08", Err(TOO_SHORT)),  // bad offset format
-            ("2015-01-20T", Err(TOO_SHORT)),             // missing HMS
-            ("2015-01-20T00:00:1", Err(TOO_SHORT)),      // missing complete S
-            ("2015-01-20T00:00:1-08:00", Err(INVALID)),  // missing complete S
+            ("2015/01/20T17:35:20.001-08:00", Err(Error::InvalidCharacter)), // wrong separator char YMD
+            ("2015-01-20T17-35-20.001-08:00", Err(Error::InvalidCharacter)), // wrong separator char HMS
+            ("-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),         // missing year
+            ("99-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),       // bad year format
+            ("99999-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
+            ("-2000-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
+            ("2015-02-30T17:35:20-08:00", Err(Error::InvalidArgument)), // bad day of month value
+            ("2015-01-20T25:35:20-08:00", Err(Error::InvalidArgument)), // bad hour value
+            ("2015-01-20T17:65:20-08:00", Err(Error::InvalidArgument)), // bad minute value
+            ("2015-01-20T17:35:90-08:00", Err(Error::InvalidArgument)), // bad second value
+            ("2015-01-20T17:35:20-24:00", Err(Error::InvalidArgument)), // bad offset value
+            ("15-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),  // bad year format
+            ("15-01-20T17:35:20-08:00:00", Err(Error::InvalidCharacter)), // bad year format, bad offset format
+            ("2015-01-20T17:35:2008:00", Err(Error::InvalidCharacter)),   // missing offset sign
+            ("2015-01-20T17:35:20 08:00", Err(Error::InvalidCharacter)),  // missing offset sign
+            ("2015-01-20T17:35:20Zulu", Err(Error::TooLong)),             // bad offset format
+            ("2015-01-20T17:35:20 Zulu", Err(Error::InvalidCharacter)),   // bad offset format
+            ("2015-01-20T17:35:20GMT", Err(Error::InvalidCharacter)),     // bad offset format
+            ("2015-01-20T17:35:20 GMT", Err(Error::InvalidCharacter)),    // bad offset format
+            ("2015-01-20T17:35:20+GMT", Err(Error::InvalidCharacter)),    // bad offset format
+            ("2015-01-20T17:35:20++08:00", Err(Error::InvalidCharacter)), // bad offset format
+            ("2015-01-20T17:35:20--08:00", Err(Error::InvalidCharacter)), // bad offset format
+            ("2015-01-20T17:35:20−−08:00", Err(Error::InvalidCharacter)), // bad offset format with MINUS SIGN (U+2212)
+            ("2015-01-20T17:35:20±08:00", Err(Error::InvalidCharacter)),  // bad offset sign
+            ("2015-01-20T17:35:20-08-00", Err(Error::InvalidCharacter)),  // bad offset separator
+            ("2015-01-20T17:35:20-08;00", Err(Error::InvalidCharacter)),  // bad offset separator
+            ("2015-01-20T17:35:20-0800", Err(Error::InvalidCharacter)),   // bad offset separator
+            ("2015-01-20T17:35:20-08:0", Err(Error::TooShort)),           // bad offset minutes
+            ("2015-01-20T17:35:20-08:AA", Err(Error::InvalidCharacter)),  // bad offset minutes
+            ("2015-01-20T17:35:20-08:ZZ", Err(Error::InvalidCharacter)),  // bad offset minutes
+            ("2015-01-20T17:35:20.001-08 : 00", Err(Error::InvalidCharacter)), // bad offset separator
+            ("2015-01-20T17:35:20-08:00:00", Err(Error::TooLong)),             // bad offset format
+            ("2015-01-20T17:35:20+08:", Err(Error::TooShort)),                 // bad offset format
+            ("2015-01-20T17:35:20-08:", Err(Error::TooShort)),                 // bad offset format
+            ("2015-01-20T17:35:20−08:", Err(Error::TooShort)), // bad offset format with MINUS SIGN (U+2212)
+            ("2015-01-20T17:35:20-08", Err(Error::TooShort)),  // bad offset format
+            ("2015-01-20T", Err(Error::TooShort)),             // missing HMS
+            ("2015-01-20T00:00:1", Err(Error::TooShort)),      // missing complete S
+            ("2015-01-20T00:00:1-08:00", Err(Error::InvalidCharacter)), // missing complete S
         ];
 
         // Test against test data above

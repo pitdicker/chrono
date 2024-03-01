@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::format::Locale;
 use crate::format::{
     parse, parse_and_remainder, parse_rfc3339, Fixed, Item, ParseError, ParseResult, Parsed,
-    StrftimeItems, TOO_LONG,
+    StrftimeItems,
 };
 #[cfg(feature = "alloc")]
 use crate::format::{write_rfc2822, write_rfc3339, DelayedFormat, SecondsFormat};
@@ -29,7 +29,7 @@ use crate::offset::{FixedOffset, Offset, TimeZone, Utc};
 #[cfg(any(feature = "clock", feature = "std"))]
 use crate::OutOfRange;
 use crate::{expect, ok, try_opt};
-use crate::{Datelike, Months, TimeDelta, Timelike, Weekday};
+use crate::{Datelike, Error, Months, TimeDelta, Timelike, Weekday};
 
 #[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -900,13 +900,8 @@ impl DateTime<FixedOffset> {
     /// instances (rather than periods, ranges, dates, or times). Some valid ISO 8601 values are
     /// also simultaneously valid RFC 3339 values, but not all RFC 3339 values are valid ISO 8601
     /// values (or the other way around).
-    pub fn parse_from_rfc3339(s: &str) -> ParseResult<DateTime<FixedOffset>> {
-        let mut parsed = Parsed::new();
-        let (s, _) = parse_rfc3339(&mut parsed, s)?;
-        if !s.is_empty() {
-            return Err(TOO_LONG);
-        }
-        parsed.to_datetime()
+    pub fn parse_from_rfc3339(s: &str) -> Result<DateTime<FixedOffset>, Error> {
+        parse_rfc3339(s)
     }
 
     /// Parses a string from a user-specified format into a `DateTime<FixedOffset>` value.
