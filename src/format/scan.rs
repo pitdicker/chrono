@@ -14,7 +14,7 @@ use crate::Weekday;
 /// More than `max` digits are consumed up to the first `max` digits.
 /// Any number that does not fit in `i64` is an error.
 #[inline]
-pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)> {
+pub(super) fn number(s: &str, min: usize, max: usize, positive: bool) -> ParseResult<(&str, i64)> {
     assert!(min <= max);
 
     // We are only interested in ascii numbers, so we can work with the `str` as bytes. We stop on
@@ -25,6 +25,8 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
         return Err(TOO_SHORT);
     }
 
+    // We construct the value as a negative integer first, and flip the sign if `positive`.
+    // This allows us to parse `i64::MIN`.
     let mut n = 0i64;
     for (i, c) in bytes.iter().take(max).cloned().enumerate() {
         // cloned() = copied()
@@ -32,16 +34,22 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
             if i < min {
                 return Err(INVALID);
             } else {
+                if positive {
+                    n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+                }
                 return Ok((&s[i..], n));
             }
         }
 
-        n = match n.checked_mul(10).and_then(|n| n.checked_add((c - b'0') as i64)) {
+        n = match n.checked_mul(10).and_then(|n| n.checked_sub((c - b'0') as i64)) {
             Some(n) => n,
             None => return Err(OUT_OF_RANGE),
         };
     }
 
+    if positive {
+        n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+    }
     Ok((&s[core::cmp::min(max, bytes.len())..], n))
 }
 
@@ -50,7 +58,7 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
 pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
     // record the number of digits consumed for later scaling.
     let origlen = s.len();
-    let (s, v) = number(s, 1, 9)?;
+    let (s, v) = number(s, 1, 9, true)?;
     let consumed = origlen - s.len();
 
     // scale the number accordingly.
@@ -68,7 +76,7 @@ pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
 /// Returns the number of whole nanoseconds (0--999,999,999).
 pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> ParseResult<(&str, i64)> {
     // record the number of digits consumed for later scaling.
-    let (s, v) = number(s, digits, digits)?;
+    let (s, v) = number(s, digits, digits, true)?;
 
     // scale the number accordingly.
     static SCALE: [i64; 10] =
@@ -194,7 +202,7 @@ pub(super) fn s_next(s: &str) -> &str {
 
 /// Consumes one colon char `:` if it is at the front of `s`.
 /// Always returns `Ok(s)`.
-pub(crate) fn consume_colon_maybe(mut s: &str) -> ParseResult<&str> {
+pub(super) fn consume_colon_maybe(mut s: &str) -> ParseResult<&str> {
     if s.is_empty() {
         // nothing consumed
         return Ok(s);
@@ -222,7 +230,7 @@ pub(crate) fn consume_colon_maybe(mut s: &str) -> ParseResult<&str> {
 /// This is part of [RFC 3339 & ISO 8601].
 ///
 /// [RFC 3339 & ISO 8601]: https://en.wikipedia.org/w/index.php?title=ISO_8601&oldid=1114309368#Time_offsets_from_UTC
-pub(crate) fn timezone_offset<F>(
+pub(super) fn timezone_offset<F>(
     mut s: &str,
     mut consume_colon: F,
     allow_zulu: bool,
@@ -238,34 +246,28 @@ where
         }
     }
 
-    const fn digits(s: &str) -> ParseResult<(u8, u8)> {
+    fn digits(s: &str) -> ParseResult<u8> {
         let b = s.as_bytes();
         if b.len() < 2 {
-            Err(TOO_SHORT)
-        } else {
-            Ok((b[0], b[1]))
+            return Err(TOO_SHORT);
+        }
+        match (b[0], b[1]) {
+            (h1 @ b'0'..=b'9', h2 @ b'0'..=b'9') => Ok((h1 - b'0') * 10 + (h2 - b'0')),
+            _ => Err(INVALID),
         }
     }
     let negative = match s.chars().next() {
         Some('+') => {
-            // PLUS SIGN (U+2B)
             s = &s['+'.len_utf8()..];
-
             false
         }
         Some('-') => {
-            // HYPHEN-MINUS (U+2D)
             s = &s['-'.len_utf8()..];
-
             true
         }
-        Some('−') => {
+        Some('−') if allow_tz_minus_sign => {
             // MINUS SIGN (U+2212)
-            if !allow_tz_minus_sign {
-                return Err(INVALID);
-            }
             s = &s['−'.len_utf8()..];
-
             true
         }
         Some(_) => return Err(INVALID),
@@ -273,10 +275,7 @@ where
     };
 
     // hours (00--99)
-    let hours = match digits(s)? {
-        (h1 @ b'0'..=b'9', h2 @ b'0'..=b'9') => i32::from((h1 - b'0') * 10 + (h2 - b'0')),
-        _ => return Err(INVALID),
-    };
+    let hours = digits(s)? as i32;
     s = &s[2..];
 
     // colons (and possibly other separators)
@@ -284,21 +283,14 @@ where
 
     // minutes (00--59)
     // if the next two items are digits then we have to add minutes
-    let minutes = if let Ok(ds) = digits(s) {
-        match ds {
-            (m1 @ b'0'..=b'5', m2 @ b'0'..=b'9') => i32::from((m1 - b'0') * 10 + (m2 - b'0')),
-            (b'6'..=b'9', b'0'..=b'9') => return Err(OUT_OF_RANGE),
-            _ => return Err(INVALID),
+    let minutes = match digits(s) {
+        Ok(m) if m >= 60 => return Err(OUT_OF_RANGE),
+        Ok(m) => {
+            s = &s[2..];
+            m as i32
         }
-    } else if allow_missing_minutes {
-        0
-    } else {
-        return Err(TOO_SHORT);
-    };
-    s = match s.len() {
-        len if len >= 2 => &s[2..],
-        0 => s,
-        _ => return Err(TOO_SHORT),
+        Err(_) if allow_missing_minutes => 0,
+        Err(e) => return Err(e),
     };
 
     let seconds = hours * 3600 + minutes * 60;
