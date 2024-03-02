@@ -15,14 +15,14 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 #[cfg(feature = "alloc")]
 use crate::format::DelayedFormat;
-use crate::format::{parse, parse_and_remainder, ParseError, ParseResult, Parsed, StrftimeItems};
+use crate::format::{parse, parse_and_remainder, Parsed, StrftimeItems};
 use crate::format::{Fixed, Item, Numeric, Pad};
 use crate::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
 use crate::offset::Utc;
 use crate::time_delta::NANOS_PER_SEC;
 use crate::{
-    expect, ok, try_opt, DateTime, Datelike, FixedOffset, LocalResult, Months, TimeDelta, TimeZone,
-    Timelike, Weekday,
+    expect, ok, try_opt, DateTime, Datelike, Error, FixedOffset, LocalResult, Months, TimeDelta,
+    TimeZone, Timelike, Weekday,
 };
 
 /// Tools to help serializing/deserializing `NaiveDateTime`s
@@ -251,7 +251,7 @@ impl NaiveDateTime {
     /// assert!(parse_from_str("10000-09-09 01:46:39", fmt).is_err());
     /// assert!(parse_from_str("+10000-09-09 01:46:39", fmt).is_ok());
     /// ```
-    pub fn parse_from_str(s: &str, fmt: &str) -> ParseResult<NaiveDateTime> {
+    pub fn parse_from_str(s: &str, fmt: &str) -> Result<NaiveDateTime, Error> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_datetime_with_offset(0) // no offset adjustment
@@ -276,7 +276,10 @@ impl NaiveDateTime {
     /// assert_eq!(datetime, NaiveDate::from_ymd(2015, 2, 18).unwrap().and_hms(23, 16, 9).unwrap());
     /// assert_eq!(remainder, " trailing text");
     /// ```
-    pub fn parse_and_remainder<'a>(s: &'a str, fmt: &str) -> ParseResult<(NaiveDateTime, &'a str)> {
+    pub fn parse_and_remainder<'a>(
+        s: &'a str,
+        fmt: &str,
+    ) -> Result<(NaiveDateTime, &'a str), Error> {
         let mut parsed = Parsed::new();
         let remainder = parse_and_remainder(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_datetime_with_offset(0).map(|d| (d, remainder)) // no offset adjustment
@@ -1999,9 +2002,9 @@ impl fmt::Display for NaiveDateTime {
 /// assert!("foo".parse::<NaiveDateTime>().is_err());
 /// ```
 impl str::FromStr for NaiveDateTime {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<NaiveDateTime> {
+    fn from_str(s: &str) -> Result<NaiveDateTime, Error> {
         const ITEMS: &[Item<'static>] = &[
             Item::Numeric(Numeric::Year, Pad::Zero),
             Item::Space(""),

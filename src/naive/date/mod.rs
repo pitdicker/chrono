@@ -30,8 +30,7 @@ use pure_rust_locales::Locale;
 #[cfg(feature = "alloc")]
 use crate::format::DelayedFormat;
 use crate::format::{
-    parse, parse_and_remainder, write_hundreds, Item, Numeric, Pad, ParseError, ParseResult,
-    Parsed, StrftimeItems,
+    parse, parse_and_remainder, write_hundreds, Item, Numeric, Pad, Parsed, StrftimeItems,
 };
 use crate::month::Months;
 use crate::naive::{Days, IsoWeek, NaiveDateTime, NaiveTime, NaiveWeek};
@@ -409,7 +408,7 @@ impl NaiveDate {
     /// # let parse_from_str = NaiveDate::parse_from_str;
     /// assert!(parse_from_str("Sat, 09 Aug 2013", "%a, %d %b %Y").is_err());
     /// ```
-    pub fn parse_from_str(s: &str, fmt: &str) -> ParseResult<NaiveDate> {
+    pub fn parse_from_str(s: &str, fmt: &str) -> Result<NaiveDate, Error> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_date()
@@ -431,7 +430,7 @@ impl NaiveDate {
     /// assert_eq!(date, NaiveDate::from_ymd(2015, 2, 18).unwrap());
     /// assert_eq!(remainder, " trailing text");
     /// ```
-    pub fn parse_and_remainder<'a>(s: &'a str, fmt: &str) -> ParseResult<(NaiveDate, &'a str)> {
+    pub fn parse_and_remainder<'a>(s: &'a str, fmt: &str) -> Result<(NaiveDate, &'a str), Error> {
         let mut parsed = Parsed::new();
         let remainder = parse_and_remainder(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_date().map(|d| (d, remainder))
@@ -2091,9 +2090,9 @@ impl fmt::Display for NaiveDate {
 /// assert!("foo".parse::<NaiveDate>().is_err());
 /// ```
 impl str::FromStr for NaiveDate {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<NaiveDate> {
+    fn from_str(s: &str) -> Result<NaiveDate, Error> {
         const ITEMS: &[Item<'static>] = &[
             Item::Numeric(Numeric::Year, Pad::Zero),
             Item::Space(""),

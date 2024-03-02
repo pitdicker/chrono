@@ -11,7 +11,7 @@ use core::usize;
 use super::scan;
 use super::{Fixed, InternalFixed, InternalInternal, Item, Numeric, Pad, Parsed};
 use super::{ParseError, ParseResult};
-use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_LONG, TOO_SHORT};
+use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_SHORT};
 use crate::{DateTime, Error, FixedOffset, Weekday};
 
 fn set_weekday_with_num_days_from_sunday(p: &mut Parsed, v: i64) -> Result<&mut Parsed, Error> {
@@ -249,14 +249,14 @@ fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<&
 ///   so one can prepend any number of whitespace then any number of zeroes before numbers.
 ///
 /// - (Still) obeying the intrinsic parsing width. This allows, for example, parsing `HHMMSS`.
-pub fn parse<'a, I, B>(parsed: &mut Parsed, s: &str, items: I) -> ParseResult<()>
+pub fn parse<'a, I, B>(parsed: &mut Parsed, s: &str, items: I) -> Result<(), Error>
 where
     I: Iterator<Item = B>,
     B: Borrow<Item<'a>>,
 {
     match parse_internal(parsed, s, items) {
         Ok("") => Ok(()),
-        Ok(_) => Err(TOO_LONG), // if there are trailing chars it is an error
+        Ok(_) => Err(Error::TooLong), // if there are trailing chars it is an error
         Err(e) => Err(e),
     }
 }
@@ -279,7 +279,7 @@ pub fn parse_and_remainder<'a, 'b, I, B>(
     parsed: &mut Parsed,
     s: &'b str,
     items: I,
-) -> ParseResult<&'b str>
+) -> Result<&'b str, Error>
 where
     I: Iterator<Item = B>,
     B: Borrow<Item<'a>>,
@@ -569,6 +569,12 @@ mod tests {
     use crate::format::*;
     use crate::{DateTime, FixedOffset, NaiveDateTime, TimeZone, Timelike, Utc};
 
+    const OUT_OF_RANGE: Error = Error::InvalidArgument;
+    const IMPOSSIBLE: Error = Error::Inconsistent;
+    const INVALID: Error = Error::InvalidCharacter;
+    const TOO_SHORT: Error = Error::TooShort;
+    const TOO_LONG: Error = Error::TooLong;
+
     #[test]
     fn test_parse_whitespace_and_literal() {
         use crate::format::Item::{Literal, Space};
@@ -696,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_numeric() -> Result<(), ParseError> {
+    fn test_parse_numeric() -> Result<(), Error> {
         use crate::format::Item::{Literal, Space};
         use crate::format::Numeric::*;
 
@@ -824,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_fixed() -> Result<(), ParseError> {
+    fn test_parse_fixed() -> Result<(), Error> {
         use crate::format::Fixed::*;
         use crate::format::Item::{Literal, Space};
 
@@ -893,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_fixed_nanosecond() -> Result<(), ParseError> {
+    fn test_parse_fixed_nanosecond() -> Result<(), Error> {
         use crate::format::Fixed::Nanosecond;
         use crate::format::InternalInternal::*;
         use crate::format::Item::Literal;
@@ -994,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_fixed_timezone_offset() -> Result<(), ParseError> {
+    fn test_parse_fixed_timezone_offset() -> Result<(), Error> {
         use crate::format::Fixed::*;
         use crate::format::InternalInternal::*;
         use crate::format::Item::Literal;
@@ -1431,7 +1437,7 @@ mod tests {
 
     #[test]
     #[rustfmt::skip]
-    fn test_parse_practical_examples() -> Result<(), ParseError> {
+    fn test_parse_practical_examples() -> Result<(), Error> {
         use crate::format::InternalInternal::*;
         use crate::format::Item::{Literal, Space};
         use crate::format::Numeric::*;
@@ -1554,7 +1560,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn check(s: &str, items: &[Item], expected: ParseResult<&mut Parsed>) {
+    fn check(s: &str, items: &[Item], expected: Result<&mut Parsed, Error>) {
         let mut parsed = Parsed::new();
         let result = parse(&mut parsed, s, items.iter());
         let parsed = result.map(|_| parsed);
@@ -1635,7 +1641,7 @@ mod tests {
             ("Tue, 20 Jan 2015😈17:35:20 -0800", Err(INVALID)), // bad character!
         ];
 
-        fn rfc2822_to_datetime(date: &str) -> ParseResult<DateTime<FixedOffset>> {
+        fn rfc2822_to_datetime(date: &str) -> Result<DateTime<FixedOffset>, Error> {
             let mut parsed = Parsed::new();
             parse(&mut parsed, date, [Item::Fixed(Fixed::RFC2822)].iter())?;
             parsed.to_datetime()

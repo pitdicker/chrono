@@ -16,8 +16,7 @@ use crate::expect;
 #[cfg(feature = "alloc")]
 use crate::format::DelayedFormat;
 use crate::format::{
-    parse, parse_and_remainder, write_hundreds, Fixed, Item, Numeric, Pad, ParseError, ParseResult,
-    Parsed, StrftimeItems,
+    parse, parse_and_remainder, write_hundreds, Fixed, Item, Numeric, Pad, Parsed, StrftimeItems,
 };
 use crate::{Error, FixedOffset, TimeDelta, Timelike};
 
@@ -492,7 +491,7 @@ impl NaiveTime {
     /// # let parse_from_str = NaiveTime::parse_from_str;
     /// assert!(parse_from_str("13:07 AM", "%H:%M %p").is_err());
     /// ```
-    pub fn parse_from_str(s: &str, fmt: &str) -> ParseResult<NaiveTime> {
+    pub fn parse_from_str(s: &str, fmt: &str) -> Result<NaiveTime, Error> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_time()
@@ -514,7 +513,7 @@ impl NaiveTime {
     /// assert_eq!(time, NaiveTime::from_hms(3, 4, 33).unwrap());
     /// assert_eq!(remainder, " trailing text");
     /// ```
-    pub fn parse_and_remainder<'a>(s: &'a str, fmt: &str) -> ParseResult<(NaiveTime, &'a str)> {
+    pub fn parse_and_remainder<'a>(s: &'a str, fmt: &str) -> Result<(NaiveTime, &'a str), Error> {
         let mut parsed = Parsed::new();
         let remainder = parse_and_remainder(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_naive_time().map(|t| (t, remainder))
@@ -1473,9 +1472,9 @@ impl fmt::Display for NaiveTime {
 /// assert!("foo".parse::<NaiveTime>().is_err());
 /// ```
 impl str::FromStr for NaiveTime {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<NaiveTime> {
+    fn from_str(s: &str) -> Result<NaiveTime, Error> {
         const HOUR_AND_MINUTE: &[Item<'static>] = &[
             Item::Numeric(Numeric::Hour, Pad::Zero),
             Item::Space(""),

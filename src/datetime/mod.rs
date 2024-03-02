@@ -17,8 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
 use crate::format::Locale;
 use crate::format::{
-    parse, parse_and_remainder, parse_rfc3339, Fixed, Item, ParseError, ParseResult, Parsed,
-    StrftimeItems,
+    parse, parse_and_remainder, parse_rfc3339, Fixed, Item, Parsed, StrftimeItems,
 };
 #[cfg(feature = "alloc")]
 use crate::format::{write_rfc2822, write_rfc3339, DelayedFormat, SecondsFormat};
@@ -880,7 +879,7 @@ impl DateTime<FixedOffset> {
     ///     FixedOffset::east(0).unwrap().with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap()
     /// );
     /// ```
-    pub fn parse_from_rfc2822(s: &str) -> ParseResult<DateTime<FixedOffset>> {
+    pub fn parse_from_rfc2822(s: &str) -> Result<DateTime<FixedOffset>, Error> {
         const ITEMS: &[Item<'static>] = &[Item::Fixed(Fixed::RFC2822)];
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, ITEMS.iter())?;
@@ -930,7 +929,7 @@ impl DateTime<FixedOffset> {
     ///         .unwrap())
     /// );
     /// ```
-    pub fn parse_from_str(s: &str, fmt: &str) -> ParseResult<DateTime<FixedOffset>> {
+    pub fn parse_from_str(s: &str, fmt: &str) -> Result<DateTime<FixedOffset>, Error> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_datetime()
@@ -967,7 +966,7 @@ impl DateTime<FixedOffset> {
     pub fn parse_and_remainder<'a>(
         s: &'a str,
         fmt: &str,
-    ) -> ParseResult<(DateTime<FixedOffset>, &'a str)> {
+    ) -> Result<(DateTime<FixedOffset>, &'a str), Error> {
         let mut parsed = Parsed::new();
         let remainder = parse_and_remainder(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_datetime().map(|d| (d, remainder))
@@ -1690,12 +1689,12 @@ where
 /// "2012-12-12T12:12:12Z".parse::<DateTime<FixedOffset>>()?;
 /// "2012-12-12 12:12:12Z".parse::<DateTime<FixedOffset>>()?;
 /// "2012-  12-12T12:  12:12Z".parse::<DateTime<FixedOffset>>()?;
-/// # Ok::<(), chrono::ParseError>(())
+/// # Ok::<(), chrono::Error>(())
 /// ```
 impl str::FromStr for DateTime<FixedOffset> {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<DateTime<FixedOffset>> {
+    fn from_str(s: &str) -> Result<DateTime<FixedOffset>, Error> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, [Item::Fixed(Fixed::RFC3339), Item::Space("")].iter())?;
         parsed.to_datetime()
@@ -1713,12 +1712,12 @@ impl str::FromStr for DateTime<FixedOffset> {
 /// "2012-12-12 12:12:12Z".parse::<DateTime<Utc>>()?;
 /// "2012-12-12 12:12:12+0000".parse::<DateTime<Utc>>()?;
 /// "2012-12-12 12:12:12+00:00".parse::<DateTime<Utc>>()?;
-/// # Ok::<(), chrono::ParseError>(())
+/// # Ok::<(), chrono::Error>(())
 /// ```
 impl str::FromStr for DateTime<Utc> {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<DateTime<Utc>> {
+    fn from_str(s: &str) -> Result<DateTime<Utc>, Error> {
         s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Utc))
     }
 }
@@ -1734,13 +1733,13 @@ impl str::FromStr for DateTime<Utc> {
 /// "2012-12-12 12:12:12Z".parse::<DateTime<Local>>()?;
 /// "2012-12-12 12:12:12+0000".parse::<DateTime<Local>>()?;
 /// "2012-12-12 12:12:12+00:00".parse::<DateTime<Local>>()?;
-/// # Ok::<(), chrono::ParseError>(())
+/// # Ok::<(), chrono::Error>(())
 /// ```
 #[cfg(feature = "clock")]
 impl str::FromStr for DateTime<Local> {
-    type Err = ParseError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> ParseResult<DateTime<Local>> {
+    fn from_str(s: &str) -> Result<DateTime<Local>, Error> {
         s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Local))
     }
 }

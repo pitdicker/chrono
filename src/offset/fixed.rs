@@ -10,7 +10,7 @@ use core::str::FromStr;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{LocalResult, Offset, TimeZone};
-use crate::format::{parse, Fixed, Item, ParseError, Parsed};
+use crate::format::{parse, Fixed, Item, Parsed};
 use crate::{Error, NaiveDateTime};
 
 /// The time zone with fixed offset, from UTC-23:59:59 to UTC+23:59:59.
@@ -99,7 +99,7 @@ impl FixedOffset {
 
 /// Parsing a `str` into a `FixedOffset` uses the format [`%z`](crate::format::strftime).
 impl FromStr for FixedOffset {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parsed = Parsed::new();

@@ -27,7 +27,7 @@
 //!
 //! let parsed = NaiveDateTime::parse_from_str(&formatted, "%Y-%m-%d %H:%M:%S")?.and_utc();
 //! assert_eq!(parsed, date_time);
-//! # Ok::<(), chrono::ParseError>(())
+//! # Ok::<(), chrono::Error>(())
 //! ```
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -390,7 +390,6 @@ const IMPOSSIBLE: ParseError = ParseError::Inconsistent;
 const NOT_ENOUGH: ParseError = ParseError::Ambiguous;
 const INVALID: ParseError = ParseError::InvalidCharacter;
 const TOO_SHORT: ParseError = ParseError::TooShort;
-pub(crate) const TOO_LONG: ParseError = ParseError::TooLong;
 const BAD_FORMAT: ParseError = ParseError::BadFormat;
 
 // this implementation is here only because we need some private code from `scan`
