@@ -109,14 +109,14 @@ fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a st
     }
 
     s = s.trim_start();
-    parsed.set_day(try_consume!(scan::number(s, 1, 2)))?;
+    parsed.set_day(try_consume!(scan::number(s, 1, 2, true)))?;
     s = scan::space(s)?; // mandatory
     parsed.set_month(1 + i64::from(try_consume!(scan::short_month0(s))))?;
     s = scan::space(s)?; // mandatory
 
     // distinguish two- and three-digit years from four-digit years
     let prevlen = s.len();
-    let mut year = try_consume!(scan::number(s, 2, usize::MAX));
+    let mut year = try_consume!(scan::number(s, 2, usize::MAX, true));
     let yearlen = prevlen - s.len();
     match (yearlen, year) {
         (2, 0..=49) => {
@@ -133,12 +133,12 @@ fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult<(&'a st
     parsed.set_year(year)?;
 
     s = scan::space(s)?; // mandatory
-    parsed.set_hour(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_hour(try_consume!(scan::number(s, 2, 2, true)))?;
     s = scan::char(s.trim_start(), b':')?.trim_start(); // *S ":" *S
-    parsed.set_minute(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_minute(try_consume!(scan::number(s, 2, 2, true)))?;
     if let Ok(s_) = scan::char(s.trim_start(), b':') {
         // [ ":" *S 2DIGIT ]
-        parsed.set_second(try_consume!(scan::number(s_, 2, 2)))?;
+        parsed.set_second(try_consume!(scan::number(s_, 2, 2, true)))?;
     }
 
     s = scan::space(s)?; // mandatory
@@ -190,11 +190,11 @@ pub(crate) fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseRes
     //
     // - For readability a full-date and a full-time may be separated by a space character.
 
-    parsed.set_year(try_consume!(scan::number(s, 4, 4)))?;
+    parsed.set_year(try_consume!(scan::number(s, 4, 4, true)))?;
     s = scan::char(s, b'-')?;
-    parsed.set_month(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_month(try_consume!(scan::number(s, 2, 2, true)))?;
     s = scan::char(s, b'-')?;
-    parsed.set_day(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_day(try_consume!(scan::number(s, 2, 2, true)))?;
 
     s = match s.as_bytes().first() {
         Some(&b't' | &b'T' | &b' ') => &s[1..],
@@ -202,11 +202,11 @@ pub(crate) fn parse_rfc3339<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseRes
         None => return Err(TOO_SHORT),
     };
 
-    parsed.set_hour(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_hour(try_consume!(scan::number(s, 2, 2, true)))?;
     s = scan::char(s, b':')?;
-    parsed.set_minute(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_minute(try_consume!(scan::number(s, 2, 2, true)))?;
     s = scan::char(s, b':')?;
-    parsed.set_second(try_consume!(scan::number(s, 2, 2)))?;
+    parsed.set_second(try_consume!(scan::number(s, 2, 2, true)))?;
     if s.starts_with('.') {
         let nanosecond = try_consume!(scan::nanosecond(&s[1..]));
         parsed.set_nanosecond(nanosecond)?;
@@ -357,7 +357,7 @@ where
                     Minute => (2, false, Parsed::set_minute),
                     Second => (2, false, Parsed::set_second),
                     Nanosecond => (9, false, Parsed::set_nanosecond),
-                    Timestamp => (usize::MAX, false, Parsed::set_timestamp),
+                    Timestamp => (usize::MAX, true, Parsed::set_timestamp),
 
                     // for the future expansion
                     Internal(ref int) => match int._dummy {},
@@ -366,16 +366,15 @@ where
                 s = s.trim_start();
                 let v = if signed {
                     if s.starts_with('-') {
-                        let v = try_consume!(scan::number(&s[1..], 1, usize::MAX));
-                        0i64.checked_sub(v).ok_or(OUT_OF_RANGE)?
+                        try_consume!(scan::number(&s[1..], 1, usize::MAX, false))
                     } else if s.starts_with('+') {
-                        try_consume!(scan::number(&s[1..], 1, usize::MAX))
+                        try_consume!(scan::number(&s[1..], 1, usize::MAX, true))
                     } else {
                         // if there is no explicit sign, we respect the original `width`
-                        try_consume!(scan::number(s, 1, width))
+                        try_consume!(scan::number(s, 1, width, true))
                     }
                 } else {
-                    try_consume!(scan::number(s, 1, width))
+                    try_consume!(scan::number(s, 1, width, true))
                 };
                 set(parsed, v)?;
             }
@@ -765,6 +764,7 @@ mod tests {
         check("  +   42", &[Space("  "), num(Year)], Err(INVALID));
         check("-", &[num(Year)], Err(TOO_SHORT));
         check("+", &[num(Year)], Err(TOO_SHORT));
+        check("-9223372036854775808", &[num(Timestamp)], parsed!(timestamp: i64::MIN));
 
         // unsigned numeric
         check("345", &[num(Ordinal)], parsed!(ordinal: 345));

@@ -14,7 +14,7 @@ use crate::Weekday;
 /// More than `max` digits are consumed up to the first `max` digits.
 /// Any number that does not fit in `i64` is an error.
 #[inline]
-pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)> {
+pub(super) fn number(s: &str, min: usize, max: usize, positive: bool) -> ParseResult<(&str, i64)> {
     assert!(min <= max);
 
     // We are only interested in ascii numbers, so we can work with the `str` as bytes. We stop on
@@ -25,6 +25,8 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
         return Err(TOO_SHORT);
     }
 
+    // We construct the value as a negative integer first, and flip the sign if `positive`.
+    // This allows us to parse `i64::MIN`.
     let mut n = 0i64;
     for (i, c) in bytes.iter().take(max).cloned().enumerate() {
         // cloned() = copied()
@@ -32,16 +34,22 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
             if i < min {
                 return Err(INVALID);
             } else {
+                if positive {
+                    n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+                }
                 return Ok((&s[i..], n));
             }
         }
 
-        n = match n.checked_mul(10).and_then(|n| n.checked_add((c - b'0') as i64)) {
+        n = match n.checked_mul(10).and_then(|n| n.checked_sub((c - b'0') as i64)) {
             Some(n) => n,
             None => return Err(OUT_OF_RANGE),
         };
     }
 
+    if positive {
+        n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+    }
     Ok((&s[core::cmp::min(max, bytes.len())..], n))
 }
 
@@ -50,7 +58,7 @@ pub(super) fn number(s: &str, min: usize, max: usize) -> ParseResult<(&str, i64)
 pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
     // record the number of digits consumed for later scaling.
     let origlen = s.len();
-    let (s, v) = number(s, 1, 9)?;
+    let (s, v) = number(s, 1, 9, true)?;
     let consumed = origlen - s.len();
 
     // scale the number accordingly.
@@ -68,7 +76,7 @@ pub(super) fn nanosecond(s: &str) -> ParseResult<(&str, i64)> {
 /// Returns the number of whole nanoseconds (0--999,999,999).
 pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> ParseResult<(&str, i64)> {
     // record the number of digits consumed for later scaling.
-    let (s, v) = number(s, digits, digits)?;
+    let (s, v) = number(s, digits, digits, true)?;
 
     // scale the number accordingly.
     static SCALE: [i64; 10] =
