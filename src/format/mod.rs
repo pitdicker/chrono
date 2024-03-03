@@ -378,11 +378,63 @@ impl<'a> Item<'a> {
     }
 }
 
-/// An error from the `parse` function.
-pub type ParseError = Error;
+/// The category of parse error
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParseError {
+    /// Some of the date or time components are not consistent with each other.
+    ///
+    /// During parsing this only arises if a field is set for a second time in the `Parsed` type,
+    /// while not matching the first value.
+    ///
+    /// Maps to `Error::Inconsistent`.
+    Inconsistent,
+
+    /// Character does not match with the expected format.
+    ///
+    /// Maps to `Error::InvalidCharacter`.
+    InvalidCharacter,
+
+    /// Value is not allowed by the format.
+    ///
+    /// Examples are a number that is larger or smaller than the defined range, or the name of a
+    /// weekday, month or timezone that doesn't match.
+    ///
+    /// Maps to `Error::InvalidValue`.
+    InvalidValue,
+
+    /// The input is shorter than expected by the format.
+    ///
+    /// Maps to `Error::InvalidCharacter(input.len())`.
+    TooShort,
+
+    /// There was an error on the formatting string, or there were non-supported formating items.
+    /// TEMPORARY
+    BadFormat,
+}
+
+impl ParseError {
+    fn to_error(&self, _src_str: &str) -> Error {
+        match self {
+            ParseError::Inconsistent => Error::Inconsistent,
+            ParseError::InvalidCharacter => Error::InvalidCharacter,
+            ParseError::InvalidValue => Error::InvalidValue,
+            ParseError::TooShort => Error::TooShort,
+            ParseError::BadFormat => Error::BadFormat,
+        }
+    }
+}
+
+fn parse_error(error: Error, _remainder: &str) -> ParseError {
+    match error {
+        Error::Inconsistent => ParseError::Inconsistent,
+        Error::InvalidArgument => ParseError::InvalidValue,
+        _ => panic!("`Parsed::set_*` should only return `Inconsistent` or `InvalidArgument`"),
+    }
+}
 
 // to be used in this module and submodules
-pub(crate) const OUT_OF_RANGE: ParseError = ParseError::InvalidArgument;
+const OUT_OF_RANGE: ParseError = ParseError::InvalidValue;
 const INVALID: ParseError = ParseError::InvalidCharacter;
 const TOO_SHORT: ParseError = ParseError::TooShort;
 const BAD_FORMAT: ParseError = ParseError::BadFormat;

@@ -33,6 +33,12 @@ pub enum Error {
     /// Character does not match with the expected format (during parsing).
     InvalidCharacter,
 
+    /// Value is not allowed by the format (during parsing).
+    ///
+    /// Examples are a number that is larger or smaller than the defined range, or the name of a
+    /// weekday, month or timezone that doesn't match.
+    InvalidValue,
+
     /// The result, or an intermediate value necessary for calculating a result, would be out of
     /// range.
     ///
@@ -63,6 +69,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidArgument => write!(f, "invalid parameter"),
             Error::InvalidCharacter => write!(f, "input doesn't match with the expected format"),
+            Error::InvalidValue => write!(f, "input has a value not allowed by the format"),
             Error::OutOfRange => write!(f, "date outside of the supported range"),
             Error::TooLong => write!(f, "trailing input"),
             Error::TooShort => write!(f, "premature end of input"),
