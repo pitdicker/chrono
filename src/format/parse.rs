@@ -11,7 +11,6 @@ use core::usize;
 use super::scan;
 use super::{parse_error, ParseError};
 use super::{Fixed, InternalFixed, InternalInternal, Item, Numeric, Pad, Parsed};
-use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_SHORT};
 use crate::{DateTime, Error, FixedOffset, Weekday};
 
 fn set_weekday_with_num_days_from_sunday(p: &mut Parsed, v: i64) -> Result<&mut Parsed, Error> {
@@ -106,7 +105,7 @@ fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<(&'a str, ()
 
     if let Ok((s_, weekday)) = scan::short_weekday(s) {
         if !s_.starts_with(',') {
-            return Err(INVALID);
+            return Err(ParseError::InvalidCharacter);
         }
         s = &s_[1..];
         parsed.set_weekday(weekday).map_err(|e| parse_error(e, s))?;
@@ -211,8 +210,8 @@ fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a st
 
     s = match s.as_bytes().first() {
         Some(&b't' | &b'T' | &b' ') => &s[1..],
-        Some(_) => return Err(INVALID),
-        None => return Err(TOO_SHORT),
+        Some(_) => return Err(ParseError::InvalidCharacter),
+        None => return Err(ParseError::TooShort),
     };
 
     parsed.set_hour(try_consume!(scan::number(s, 2, 2, true))).map_err(|e| parse_error(e, s))?;
@@ -232,7 +231,7 @@ fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a st
     // Max for the hours field is `23`, and for the minutes field `59`.
     const MAX_RFC3339_OFFSET: i32 = (23 * 60 + 59) * 60;
     if !(-MAX_RFC3339_OFFSET..=MAX_RFC3339_OFFSET).contains(&offset) {
-        return Err(OUT_OF_RANGE);
+        return Err(ParseError::InvalidValue);
     }
     parsed.set_offset(i64::from(offset)).map_err(|e| parse_error(e, s))?;
 
@@ -318,10 +317,10 @@ where
         match *item.borrow() {
             Item::Literal(prefix) => {
                 if s.len() < prefix.len() {
-                    return Err(TOO_SHORT);
+                    return Err(ParseError::TooShort);
                 }
                 if !s.starts_with(prefix) {
-                    return Err(INVALID);
+                    return Err(ParseError::InvalidCharacter);
                 }
                 s = &s[prefix.len()..];
             }
@@ -329,10 +328,10 @@ where
             #[cfg(feature = "alloc")]
             Item::OwnedLiteral(ref prefix) => {
                 if s.len() < prefix.len() {
-                    return Err(TOO_SHORT);
+                    return Err(ParseError::TooShort);
                 }
                 if !s.starts_with(&prefix[..]) {
-                    return Err(INVALID);
+                    return Err(ParseError::InvalidCharacter);
                 }
                 s = &s[prefix.len()..];
             }
@@ -418,12 +417,12 @@ where
 
                     &LowerAmPm | &UpperAmPm => {
                         if s.len() < 2 {
-                            return Err(TOO_SHORT);
+                            return Err(ParseError::TooShort);
                         }
                         let ampm = match (s.as_bytes()[0] | 32, s.as_bytes()[1] | 32) {
                             (b'a', b'm') => false,
                             (b'p', b'm') => true,
-                            _ => return Err(INVALID),
+                            _ => return Err(ParseError::InvalidCharacter),
                         };
                         parsed.set_ampm(ampm).map_err(|e| parse_error(e, s))?;
                         s = &s[2..];
@@ -438,7 +437,7 @@ where
 
                     &Internal(InternalFixed { val: InternalInternal::Nanosecond3NoDot }) => {
                         if s.len() < 3 {
-                            return Err(TOO_SHORT);
+                            return Err(ParseError::TooShort);
                         }
                         let nano = try_consume!(scan::nanosecond_fixed(s, 3));
                         parsed.set_nanosecond(nano).map_err(|e| parse_error(e, s))?;
@@ -446,7 +445,7 @@ where
 
                     &Internal(InternalFixed { val: InternalInternal::Nanosecond6NoDot }) => {
                         if s.len() < 6 {
-                            return Err(TOO_SHORT);
+                            return Err(ParseError::TooShort);
                         }
                         let nano = try_consume!(scan::nanosecond_fixed(s, 6));
                         parsed.set_nanosecond(nano).map_err(|e| parse_error(e, s))?;
@@ -454,7 +453,7 @@ where
 
                     &Internal(InternalFixed { val: InternalInternal::Nanosecond9NoDot }) => {
                         if s.len() < 9 {
-                            return Err(TOO_SHORT);
+                            return Err(ParseError::TooShort);
                         }
                         let nano = try_consume!(scan::nanosecond_fixed(s, 9));
                         parsed.set_nanosecond(nano).map_err(|e| parse_error(e, s))?;
@@ -513,7 +512,7 @@ where
             }
 
             Item::Error => {
-                return Err(BAD_FORMAT);
+                return Err(ParseError::BadFormat);
             }
         }
     }
@@ -558,8 +557,8 @@ fn parse_rfc3339_relaxed<'a>(
 
     s = match s.as_bytes().first() {
         Some(&b't' | &b'T' | &b' ') => &s[1..],
-        Some(_) => return Err(INVALID),
-        None => return Err(TOO_SHORT),
+        Some(_) => return Err(ParseError::InvalidCharacter),
+        None => return Err(ParseError::TooShort),
     };
 
     s = parse_internal(parsed, s, TIME_ITEMS.iter())?;

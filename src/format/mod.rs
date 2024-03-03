@@ -433,12 +433,6 @@ fn parse_error(error: Error, _remainder: &str) -> ParseError {
     }
 }
 
-// to be used in this module and submodules
-const OUT_OF_RANGE: ParseError = ParseError::InvalidValue;
-const INVALID: ParseError = ParseError::InvalidCharacter;
-const TOO_SHORT: ParseError = ParseError::TooShort;
-const BAD_FORMAT: ParseError = ParseError::BadFormat;
-
 // this implementation is here only because we need some private code from `scan`
 
 /// Parsing a `str` into a `Weekday` uses the format [`%A`](./format/strftime/index.html).

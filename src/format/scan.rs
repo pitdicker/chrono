@@ -5,7 +5,7 @@
  * Various scanning routines for the parser.
  */
 
-use super::{ParseError, INVALID, OUT_OF_RANGE, TOO_SHORT};
+use super::ParseError;
 use crate::Weekday;
 
 /// Tries to parse the non-negative number from `min` to `max` digits.
@@ -27,7 +27,7 @@ pub(super) fn number(
     // UTF-8 character.
     let bytes = s.as_bytes();
     if bytes.len() < min {
-        return Err(TOO_SHORT);
+        return Err(ParseError::TooShort);
     }
 
     // We construct the value as a negative integer first, and flip the sign if `positive`.
@@ -37,10 +37,10 @@ pub(super) fn number(
         // cloned() = copied()
         if !c.is_ascii_digit() {
             if i < min {
-                return Err(INVALID);
+                return Err(ParseError::InvalidCharacter);
             } else {
                 if positive {
-                    n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+                    n = n.checked_neg().ok_or(ParseError::InvalidValue)?;
                 }
                 return Ok((&s[i..], n));
             }
@@ -48,12 +48,12 @@ pub(super) fn number(
 
         n = match n.checked_mul(10).and_then(|n| n.checked_sub((c - b'0') as i64)) {
             Some(n) => n,
-            None => return Err(OUT_OF_RANGE),
+            None => return Err(ParseError::InvalidValue),
         };
     }
 
     if positive {
-        n = n.checked_neg().ok_or(OUT_OF_RANGE)?;
+        n = n.checked_neg().ok_or(ParseError::InvalidValue)?;
     }
     Ok((&s[core::cmp::min(max, bytes.len())..], n))
 }
@@ -69,7 +69,7 @@ pub(super) fn nanosecond(s: &str) -> Result<(&str, i64), ParseError> {
     // scale the number accordingly.
     static SCALE: [i64; 10] =
         [0, 100_000_000, 10_000_000, 1_000_000, 100_000, 10_000, 1_000, 100, 10, 1];
-    let v = v.checked_mul(SCALE[consumed]).ok_or(OUT_OF_RANGE)?;
+    let v = v.checked_mul(SCALE[consumed]).ok_or(ParseError::InvalidValue)?;
 
     // if there are more than 9 digits, skip next digits.
     let s = s.trim_start_matches(|c: char| c.is_ascii_digit());
@@ -86,7 +86,7 @@ pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> Result<(&str, i64), Pa
     // scale the number accordingly.
     static SCALE: [i64; 10] =
         [0, 100_000_000, 10_000_000, 1_000_000, 100_000, 10_000, 1_000, 100, 10, 1];
-    let v = v.checked_mul(SCALE[digits]).ok_or(OUT_OF_RANGE)?;
+    let v = v.checked_mul(SCALE[digits]).ok_or(ParseError::InvalidValue)?;
 
     Ok((s, v))
 }
@@ -94,7 +94,7 @@ pub(super) fn nanosecond_fixed(s: &str, digits: usize) -> Result<(&str, i64), Pa
 /// Tries to parse the month index (0 through 11) with the first three ASCII letters.
 pub(super) fn short_month0(s: &str) -> Result<(&str, u8), ParseError> {
     if s.len() < 3 {
-        return Err(TOO_SHORT);
+        return Err(ParseError::TooShort);
     }
     let buf = s.as_bytes();
     let month0 = match (buf[0] | 32, buf[1] | 32, buf[2] | 32) {
@@ -110,7 +110,7 @@ pub(super) fn short_month0(s: &str) -> Result<(&str, u8), ParseError> {
         (b'o', b'c', b't') => 9,
         (b'n', b'o', b'v') => 10,
         (b'd', b'e', b'c') => 11,
-        _ => return Err(INVALID),
+        _ => return Err(ParseError::InvalidCharacter),
     };
     Ok((&s[3..], month0))
 }
@@ -118,7 +118,7 @@ pub(super) fn short_month0(s: &str) -> Result<(&str, u8), ParseError> {
 /// Tries to parse the weekday with the first three ASCII letters.
 pub(super) fn short_weekday(s: &str) -> Result<(&str, Weekday), ParseError> {
     if s.len() < 3 {
-        return Err(TOO_SHORT);
+        return Err(ParseError::TooShort);
     }
     let buf = s.as_bytes();
     let weekday = match (buf[0] | 32, buf[1] | 32, buf[2] | 32) {
@@ -129,7 +129,7 @@ pub(super) fn short_weekday(s: &str) -> Result<(&str, Weekday), ParseError> {
         (b'f', b'r', b'i') => Weekday::Fri,
         (b's', b'a', b't') => Weekday::Sat,
         (b's', b'u', b'n') => Weekday::Sun,
-        _ => return Err(INVALID),
+        _ => return Err(ParseError::InvalidCharacter),
     };
     Ok((&s[3..], weekday))
 }
@@ -176,8 +176,8 @@ pub(super) fn short_or_long_weekday(s: &str) -> Result<(&str, Weekday), ParseErr
 pub(super) fn char(s: &str, c1: u8) -> Result<&str, ParseError> {
     match s.as_bytes().first() {
         Some(&c) if c == c1 => Ok(&s[1..]),
-        Some(_) => Err(INVALID),
-        None => Err(TOO_SHORT),
+        Some(_) => Err(ParseError::InvalidCharacter),
+        None => Err(ParseError::TooShort),
     }
 }
 
@@ -187,9 +187,9 @@ pub(super) fn space(s: &str) -> Result<&str, ParseError> {
     if s_.len() < s.len() {
         Ok(s_)
     } else if s.is_empty() {
-        Err(TOO_SHORT)
+        Err(ParseError::TooShort)
     } else {
-        Err(INVALID)
+        Err(ParseError::InvalidCharacter)
     }
 }
 
@@ -254,11 +254,11 @@ where
     fn digits(s: &str) -> Result<u8, ParseError> {
         let b = s.as_bytes();
         if b.len() < 2 {
-            return Err(TOO_SHORT);
+            return Err(ParseError::TooShort);
         }
         match (b[0], b[1]) {
             (h1 @ b'0'..=b'9', h2 @ b'0'..=b'9') => Ok((h1 - b'0') * 10 + (h2 - b'0')),
-            _ => Err(INVALID),
+            _ => Err(ParseError::InvalidCharacter),
         }
     }
     let negative = match s.chars().next() {
@@ -275,8 +275,8 @@ where
             s = &s['−'.len_utf8()..];
             true
         }
-        Some(_) => return Err(INVALID),
-        None => return Err(TOO_SHORT),
+        Some(_) => return Err(ParseError::InvalidCharacter),
+        None => return Err(ParseError::TooShort),
     };
 
     // hours (00--99)
@@ -289,7 +289,7 @@ where
     // minutes (00--59)
     // if the next two items are digits then we have to add minutes
     let minutes = match digits(s) {
-        Ok(m) if m >= 60 => return Err(OUT_OF_RANGE),
+        Ok(m) if m >= 60 => return Err(ParseError::InvalidValue),
         Ok(m) => {
             s = &s[2..];
             m as i32
@@ -337,7 +337,7 @@ pub(super) fn timezone_offset_2822(s: &str) -> Result<(&str, i32), ParseError> {
                 return Ok((s, 0));
             }
         }
-        Err(INVALID)
+        Err(ParseError::InvalidCharacter)
     } else {
         timezone_offset(s, |s| Ok(s), false, false, false)
     }
@@ -360,11 +360,11 @@ pub(super) fn comment_2822(s: &str) -> Result<(&str, ()), ParseError> {
             (Next(depth), b'(') => Next(depth + 1),
             (Next(depth), b')') => Next(depth - 1),
             (Next(depth), _) | (Escape(depth), _) => Next(depth),
-            _ => return Err(INVALID),
+            _ => return Err(ParseError::InvalidCharacter),
         };
     }
 
-    Err(TOO_SHORT)
+    Err(ParseError::TooShort)
 }
 
 enum CommentState {
@@ -379,16 +379,16 @@ mod tests {
         comment_2822, consume_colon_maybe, nanosecond, nanosecond_fixed, s_next,
         short_or_long_month0, short_or_long_weekday, space, timezone_offset_2822,
     };
-    use crate::format::{INVALID, TOO_SHORT};
+    use crate::format::ParseError;
     use crate::Weekday;
 
     #[test]
     fn test_rfc2822_comments() {
         let testdata = [
-            ("", Err(TOO_SHORT)),
-            (" ", Err(TOO_SHORT)),
-            ("x", Err(INVALID)),
-            ("(", Err(TOO_SHORT)),
+            ("", Err(ParseError::TooShort)),
+            (" ", Err(ParseError::TooShort)),
+            ("x", Err(ParseError::InvalidCharacter)),
+            ("(", Err(ParseError::TooShort)),
             ("()", Ok("")),
             (" \r\n\t()", Ok("")),
             ("() ", Ok(" ")),
@@ -398,7 +398,7 @@ mod tests {
             ("((()))", Ok("")),
             ("(x(x(x)x)x)", Ok("")),
             ("( x ( x ( x ) x ) x )", Ok("")),
-            (r"(\)", Err(TOO_SHORT)),
+            (r"(\)", Err(ParseError::TooShort)),
             (r"(\()", Ok("")),
             (r"(\))", Ok("")),
             (r"(\\)", Ok("")),
@@ -418,13 +418,13 @@ mod tests {
 
     #[test]
     fn test_space() {
-        assert_eq!(space(""), Err(TOO_SHORT));
+        assert_eq!(space(""), Err(ParseError::TooShort));
         assert_eq!(space(" "), Ok(""));
         assert_eq!(space(" \t"), Ok(""));
         assert_eq!(space(" \ta"), Ok("a"));
         assert_eq!(space(" \ta "), Ok("a "));
-        assert_eq!(space("a"), Err(INVALID));
-        assert_eq!(space("a "), Err(INVALID));
+        assert_eq!(space("a"), Err(ParseError::InvalidCharacter));
+        assert_eq!(space("a "), Err(ParseError::InvalidCharacter));
     }
 
     #[test]
@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(timezone_offset_2822("pSt").unwrap(), ("", -28800));
         assert_eq!(timezone_offset_2822("mSt").unwrap(), ("", -25200));
         assert_eq!(timezone_offset_2822("-1551").unwrap(), ("", -57060));
-        assert_eq!(timezone_offset_2822("Gp"), Err(INVALID));
+        assert_eq!(timezone_offset_2822("Gp"), Err(ParseError::InvalidCharacter));
     }
 
     #[test]
