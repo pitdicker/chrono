@@ -334,7 +334,7 @@ impl<'a> StrftimeItems<'a> {
         self.into_iter()
             .map(|item| match item == Item::Error {
                 false => Ok(item),
-                true => Err(Error::BadFormat),
+                true => Err(Error::UnsupportedSpecifier),
             })
             .collect()
     }
@@ -377,7 +377,7 @@ impl<'a> StrftimeItems<'a> {
         self.into_iter()
             .map(|item| match item == Item::Error {
                 false => Ok(item.to_owned()),
-                true => Err(Error::BadFormat),
+                true => Err(Error::UnsupportedSpecifier),
             })
             .collect()
     }

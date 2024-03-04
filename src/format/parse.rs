@@ -43,7 +43,7 @@ fn set_weekday_with_number_from_monday(p: &mut Parsed, v: i64) -> Result<&mut Pa
 /// e.g. `Fri, 21 Nov 1997 09:55:06 -0600`
 ///
 /// This function allows arbitrary intermixed whitespace per RFC 2822 appendix A.5
-fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<(&'a str, ()), ParseError> {
+fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<(&'a str, ()), ParseError<'a>> {
     macro_rules! try_consume {
         ($e:expr) => {{
             let (s_, v) = $e?;
@@ -105,7 +105,7 @@ fn parse_rfc2822<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<(&'a str, ()
 
     if let Ok((s_, weekday)) = scan::short_weekday(s) {
         if !s_.starts_with(',') {
-            return Err(ParseError::InvalidCharacter);
+            return Err(ParseError::InvalidCharacter(s_));
         }
         s = &s_[1..];
         parsed.set_weekday(weekday).map_err(|e| parse_error(e, s))?;
@@ -193,7 +193,7 @@ pub(crate) fn parse_rfc3339(s: &str) -> Result<DateTime<FixedOffset>, Error> {
     parsed.to_datetime()
 }
 
-fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a str, ParseError> {
+fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a str, ParseError<'a>> {
     macro_rules! try_consume {
         ($e:expr) => {{
             let (s_, v) = $e?;
@@ -210,8 +210,7 @@ fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a st
 
     s = match s.as_bytes().first() {
         Some(&b't' | &b'T' | &b' ') => &s[1..],
-        Some(_) => return Err(ParseError::InvalidCharacter),
-        None => return Err(ParseError::TooShort),
+        _ => return Err(ParseError::InvalidCharacter(s)),
     };
 
     parsed.set_hour(try_consume!(scan::number(s, 2, 2, true))).map_err(|e| parse_error(e, s))?;
@@ -231,7 +230,7 @@ fn parse_rfc3339_inner<'a>(parsed: &mut Parsed, mut s: &'a str) -> Result<&'a st
     // Max for the hours field is `23`, and for the minutes field `59`.
     const MAX_RFC3339_OFFSET: i32 = (23 * 60 + 59) * 60;
     if !(-MAX_RFC3339_OFFSET..=MAX_RFC3339_OFFSET).contains(&offset) {
-        return Err(ParseError::InvalidValue);
+        return Err(ParseError::InvalidValue(s));
     }
     parsed.set_offset(i64::from(offset)).map_err(|e| parse_error(e, s))?;
 
@@ -296,7 +295,7 @@ fn parse_internal<'a, 'b, I, B>(
     parsed: &mut Parsed,
     mut s: &'b str,
     items: I,
-) -> Result<&'b str, ParseError>
+) -> Result<&'b str, ParseError<'b>>
 where
     I: Iterator<Item = B>,
     B: Borrow<Item<'a>>,
@@ -320,7 +319,7 @@ where
                     return Err(ParseError::TooShort);
                 }
                 if !s.starts_with(prefix) {
-                    return Err(ParseError::InvalidCharacter);
+                    return Err(ParseError::InvalidCharacter(s)); // FIXME: doesn't point at the offending character
                 }
                 s = &s[prefix.len()..];
             }
@@ -331,7 +330,7 @@ where
                     return Err(ParseError::TooShort);
                 }
                 if !s.starts_with(&prefix[..]) {
-                    return Err(ParseError::InvalidCharacter);
+                    return Err(ParseError::InvalidCharacter(s)); // FIXME: doesn't point at the offending character
                 }
                 s = &s[prefix.len()..];
             }
@@ -422,7 +421,7 @@ where
                         let ampm = match (s.as_bytes()[0] | 32, s.as_bytes()[1] | 32) {
                             (b'a', b'm') => false,
                             (b'p', b'm') => true,
-                            _ => return Err(ParseError::InvalidCharacter),
+                            _ => return Err(ParseError::InvalidCharacter(s)),
                         };
                         parsed.set_ampm(ampm).map_err(|e| parse_error(e, s))?;
                         s = &s[2..];
@@ -512,7 +511,7 @@ where
             }
 
             Item::Error => {
-                return Err(ParseError::BadFormat);
+                return Err(ParseError::UnsupportedSpecifier);
             }
         }
     }
@@ -531,7 +530,7 @@ where
 fn parse_rfc3339_relaxed<'a>(
     parsed: &mut Parsed,
     mut s: &'a str,
-) -> Result<(&'a str, ()), ParseError> {
+) -> Result<(&'a str, ()), ParseError<'a>> {
     const DATE_ITEMS: &[Item<'static>] = &[
         Item::Numeric(Numeric::Year, Pad::Zero),
         Item::Space(""),
@@ -557,7 +556,7 @@ fn parse_rfc3339_relaxed<'a>(
 
     s = match s.as_bytes().first() {
         Some(&b't' | &b'T' | &b' ') => &s[1..],
-        Some(_) => return Err(ParseError::InvalidCharacter),
+        Some(_) => return Err(ParseError::InvalidCharacter(s)),
         None => return Err(ParseError::TooShort),
     };
 
@@ -577,9 +576,6 @@ mod tests {
     use crate::format::*;
     use crate::{DateTime, FixedOffset, NaiveDateTime, TimeZone, Timelike, Utc};
 
-    const OUT_OF_RANGE: Error = Error::InvalidValue;
-    const INVALID: Error = Error::InvalidCharacter;
-    const TOO_SHORT: Error = Error::TooShort;
     const TOO_LONG: Error = Error::TooLong;
 
     #[test]
@@ -650,22 +646,22 @@ mod tests {
 
         // literal
         parses("", &[Literal("")]);
-        check("", &[Literal("a")], Err(TOO_SHORT));
-        check(" ", &[Literal("a")], Err(INVALID));
+        check("", &[Literal("a")], Err(Error::InvalidCharacter(0)));
+        check(" ", &[Literal("a")], Err(Error::InvalidCharacter(0)));
         parses("a", &[Literal("a")]);
         parses("+", &[Literal("+")]);
         parses("-", &[Literal("-")]);
         parses("−", &[Literal("−")]); // MINUS SIGN (U+2212)
         parses(" ", &[Literal(" ")]); // a Literal may contain whitespace and match whitespace
         check("aa", &[Literal("a")], Err(TOO_LONG));
-        check("🤠", &[Literal("a")], Err(INVALID));
-        check("A", &[Literal("a")], Err(INVALID));
-        check("a", &[Literal("z")], Err(INVALID));
-        check("a", &[Literal("🤠")], Err(TOO_SHORT));
-        check("a", &[Literal("\u{0363}a")], Err(TOO_SHORT));
-        check("\u{0363}a", &[Literal("a")], Err(INVALID));
+        check("🤠", &[Literal("a")], Err(Error::InvalidCharacter(0)));
+        check("A", &[Literal("a")], Err(Error::InvalidCharacter(0)));
+        check("a", &[Literal("z")], Err(Error::InvalidCharacter(0)));
+        check("a", &[Literal("🤠")], Err(Error::InvalidCharacter(0)));
+        check("a", &[Literal("\u{0363}a")], Err(Error::InvalidCharacter(0)));
+        check("\u{0363}a", &[Literal("a")], Err(Error::InvalidCharacter(0)));
         parses("\u{0363}a", &[Literal("\u{0363}a")]);
-        check("a", &[Literal("ab")], Err(TOO_SHORT));
+        check("a", &[Literal("ab")], Err(Error::InvalidCharacter(0)));
         parses("xy", &[Literal("xy")]);
         parses("xy", &[Literal("x"), Literal("y")]);
         parses("1", &[Literal("1")]);
@@ -687,7 +683,7 @@ mod tests {
         parses("xyz", &[Literal("xy"), Literal("z")]);
         parses("xyz", &[Literal("x"), Literal("y"), Literal("z")]);
         //
-        check("x y", &[Literal("x"), Literal("y")], Err(INVALID));
+        check("x y", &[Literal("x"), Literal("y")], Err(Error::InvalidCharacter(1)));
         parses("xy", &[Literal("x"), Space(""), Literal("y")]);
         parses("x y", &[Literal("x"), Space(""), Literal("y")]);
         parses("x y", &[Literal("x"), Space(" "), Literal("y")]);
@@ -719,8 +715,8 @@ mod tests {
         check("1987", &[num(Year)], p().set_year(1987));
         check("1987 ", &[num(Year)], Err(TOO_LONG));
         check("0x12", &[num(Year)], Err(TOO_LONG)); // `0` is parsed
-        check("x123", &[num(Year)], Err(INVALID));
-        check("o123", &[num(Year)], Err(INVALID));
+        check("x123", &[num(Year)], Err(Error::InvalidCharacter(0)));
+        check("o123", &[num(Year)], Err(Error::InvalidCharacter(0)));
         check("2015", &[num(Year)], p().set_year(2015));
         check("0000", &[num(Year)], p().set_year(0));
         check("9999", &[num(Year)], p().set_year(9999));
@@ -730,8 +726,8 @@ mod tests {
         check("987🤠", &[num(Year), Literal("🤠")], p().set_year(987));
         check("5", &[num(Year)], p().set_year(5));
         check("5\0", &[num(Year)], Err(TOO_LONG));
-        check("\x005", &[num(Year)], Err(INVALID));
-        check("", &[num(Year)], Err(TOO_SHORT));
+        check("\x005", &[num(Year)], Err(Error::InvalidCharacter(0)));
+        check("", &[num(Year)], Err(Error::InvalidCharacter(0)));
         check("12345", &[num(Year), Literal("5")], p().set_year(1234));
         check("12345", &[nums(Year), Literal("5")], p().set_year(1234));
         check("12345", &[num0(Year), Literal("5")], p().set_year(1234));
@@ -739,10 +735,14 @@ mod tests {
         check("1234 1234", &[num(Year), num(Year)], p().set_year(1234));
         check("1234 1234", &[num(Year), Space(" "), num(Year)], p().set_year(1234));
         check("1234 1235", &[num(Year), num(Year)], Err(Error::Inconsistent));
-        check("1234 1234", &[num(Year), Literal("x"), num(Year)], Err(INVALID));
+        check("1234 1234", &[num(Year), Literal("x"), num(Year)], Err(Error::InvalidCharacter(4)));
         check("1234x1234", &[num(Year), Literal("x"), num(Year)], p().set_year(1234));
-        check("1234 x 1234", &[num(Year), Literal("x"), num(Year)], Err(INVALID));
-        check("1234xx1234", &[num(Year), Literal("x"), num(Year)], Err(INVALID));
+        check(
+            "1234 x 1234",
+            &[num(Year), Literal("x"), num(Year)],
+            Err(Error::InvalidCharacter(4)),
+        );
+        check("1234xx1234", &[num(Year), Literal("x"), num(Year)], Err(Error::InvalidCharacter(5)));
         check("1234xx1234", &[num(Year), Literal("xx"), num(Year)], p().set_year(1234));
         check(
             "1234 x 1234",
@@ -761,7 +761,7 @@ mod tests {
         check("-0042", &[num(Year)], p().set_year(-42));
         check("+0042", &[num(Year)], p().set_year(42));
         check("-42195", &[num(Year)], p().set_year(-42195));
-        check("−42195", &[num(Year)], Err(INVALID)); // MINUS SIGN (U+2212)
+        check("−42195", &[num(Year)], Err(Error::InvalidCharacter(0))); // MINUS SIGN (U+2212)
         check("+42195", &[num(Year)], p().set_year(42195));
         check("  -42195", &[num(Year)], p().set_year(-42195));
         check(" +42195", &[num(Year)], p().set_year(42195));
@@ -769,34 +769,34 @@ mod tests {
         check("  +42195", &[num(Year)], p().set_year(42195));
         check("-42195 ", &[num(Year)], Err(TOO_LONG));
         check("+42195 ", &[num(Year)], Err(TOO_LONG));
-        check("  -   42", &[num(Year)], Err(INVALID));
-        check("  +   42", &[num(Year)], Err(INVALID));
+        check("  -   42", &[num(Year)], Err(Error::InvalidCharacter(3)));
+        check("  +   42", &[num(Year)], Err(Error::InvalidCharacter(3)));
         check("  -42195", &[Space("  "), num(Year)], p().set_year(-42195));
-        check("  −42195", &[Space("  "), num(Year)], Err(INVALID)); // MINUS SIGN (U+2212)
+        check("  −42195", &[Space("  "), num(Year)], Err(Error::InvalidCharacter(2))); // MINUS SIGN (U+2212)
         check("  +42195", &[Space("  "), num(Year)], p().set_year(42195));
-        check("  -   42", &[Space("  "), num(Year)], Err(INVALID));
-        check("  +   42", &[Space("  "), num(Year)], Err(INVALID));
-        check("-", &[num(Year)], Err(TOO_SHORT));
-        check("+", &[num(Year)], Err(TOO_SHORT));
+        check("  -   42", &[Space("  "), num(Year)], Err(Error::InvalidCharacter(3)));
+        check("  +   42", &[Space("  "), num(Year)], Err(Error::InvalidCharacter(3)));
+        check("-", &[num(Year)], Err(Error::InvalidCharacter(0)));
+        check("+", &[num(Year)], Err(Error::InvalidCharacter(0)));
         check("-9223372036854775808", &[num(Timestamp)], p().set_timestamp(i64::MIN));
 
         // unsigned numeric
         check("345", &[num(Ordinal)], p().set_ordinal(345));
-        check("+345", &[num(Ordinal)], Err(INVALID));
-        check("-345", &[num(Ordinal)], Err(INVALID));
+        check("+345", &[num(Ordinal)], Err(Error::InvalidCharacter(0)));
+        check("-345", &[num(Ordinal)], Err(Error::InvalidCharacter(0)));
         check(" 345", &[num(Ordinal)], p().set_ordinal(345));
-        check("−345", &[num(Ordinal)], Err(INVALID)); // MINUS SIGN (U+2212)
+        check("−345", &[num(Ordinal)], Err(Error::InvalidCharacter(0))); // MINUS SIGN (U+2212)
         check("345 ", &[num(Ordinal)], Err(TOO_LONG));
         check(" 345", &[Space(" "), num(Ordinal)], p().set_ordinal(345));
         check("345 ", &[num(Ordinal), Space(" ")], p().set_ordinal(345));
         check("345🤠 ", &[num(Ordinal), Literal("🤠"), Space(" ")], p().set_ordinal(345));
         check("345🤠", &[num(Ordinal)], Err(TOO_LONG));
-        check("\u{0363}345", &[num(Ordinal)], Err(INVALID));
-        check(" +345", &[num(Ordinal)], Err(INVALID));
-        check(" -345", &[num(Ordinal)], Err(INVALID));
+        check("\u{0363}345", &[num(Ordinal)], Err(Error::InvalidCharacter(0)));
+        check(" +345", &[num(Ordinal)], Err(Error::InvalidCharacter(1)));
+        check(" -345", &[num(Ordinal)], Err(Error::InvalidCharacter(1)));
         check("\t345", &[Space("\t"), num(Ordinal)], p().set_ordinal(345));
-        check(" +345", &[Space(" "), num(Ordinal)], Err(INVALID));
-        check(" -345", &[Space(" "), num(Ordinal)], Err(INVALID));
+        check(" +345", &[Space(" "), num(Ordinal)], Err(Error::InvalidCharacter(1)));
+        check(" -345", &[Space(" "), num(Ordinal)], Err(Error::InvalidCharacter(1)));
 
         // various numeric fields
         check("1234 5678", &[num(Year), num(IsoYear)], p().set_year(1234)?.set_isoyear(5678));
@@ -848,25 +848,25 @@ mod tests {
         check("Apr", &[fixed(ShortMonthName)], p().set_month(4));
         check("APR", &[fixed(ShortMonthName)], p().set_month(4));
         check("ApR", &[fixed(ShortMonthName)], p().set_month(4));
-        check("\u{0363}APR", &[fixed(ShortMonthName)], Err(INVALID));
+        check("\u{0363}APR", &[fixed(ShortMonthName)], Err(Error::InvalidCharacter(0)));
         check("April", &[fixed(ShortMonthName)], Err(TOO_LONG)); // `Apr` is parsed
-        check("A", &[fixed(ShortMonthName)], Err(TOO_SHORT));
-        check("Sol", &[fixed(ShortMonthName)], Err(INVALID));
+        check("A", &[fixed(ShortMonthName)], Err(Error::InvalidCharacter(0)));
+        check("Sol", &[fixed(ShortMonthName)], Err(Error::InvalidCharacter(0)));
         check("Apr", &[fixed(LongMonthName)], p().set_month(4));
         check("Apri", &[fixed(LongMonthName)], Err(TOO_LONG)); // `Apr` is parsed
         check("April", &[fixed(LongMonthName)], p().set_month(4));
         check("Aprill", &[fixed(LongMonthName)], Err(TOO_LONG));
         check("Aprill", &[fixed(LongMonthName), Literal("l")], p().set_month(4));
         check("Aprl", &[fixed(LongMonthName), Literal("l")], p().set_month(4));
-        check("April", &[fixed(LongMonthName), Literal("il")], Err(TOO_SHORT)); // do not backtrack
+        check("April", &[fixed(LongMonthName), Literal("il")], Err(Error::InvalidCharacter(0))); // do not backtrack
         check("thu", &[fixed(ShortWeekdayName)], p().set_weekday(Weekday::Thu));
         check("Thu", &[fixed(ShortWeekdayName)], p().set_weekday(Weekday::Thu));
         check("THU", &[fixed(ShortWeekdayName)], p().set_weekday(Weekday::Thu));
         check("tHu", &[fixed(ShortWeekdayName)], p().set_weekday(Weekday::Thu));
         check("Thursday", &[fixed(ShortWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
-        check("T", &[fixed(ShortWeekdayName)], Err(TOO_SHORT));
-        check("The", &[fixed(ShortWeekdayName)], Err(INVALID));
-        check("Nop", &[fixed(ShortWeekdayName)], Err(INVALID));
+        check("T", &[fixed(ShortWeekdayName)], Err(Error::InvalidCharacter(0)));
+        check("The", &[fixed(ShortWeekdayName)], Err(Error::InvalidCharacter(0)));
+        check("Nop", &[fixed(ShortWeekdayName)], Err(Error::InvalidCharacter(0)));
         check("Thu", &[fixed(LongWeekdayName)], p().set_weekday(Weekday::Thu));
         check("Thur", &[fixed(LongWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
         check("Thurs", &[fixed(LongWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
@@ -874,7 +874,11 @@ mod tests {
         check("Thursdays", &[fixed(LongWeekdayName)], Err(TOO_LONG));
         check("Thursdays", &[fixed(LongWeekdayName), Literal("s")], p().set_weekday(Weekday::Thu));
         check("Thus", &[fixed(LongWeekdayName), Literal("s")], p().set_weekday(Weekday::Thu));
-        check("Thursday", &[fixed(LongWeekdayName), Literal("rsday")], Err(TOO_SHORT)); // do not backtrack
+        check(
+            "Thursday",
+            &[fixed(LongWeekdayName), Literal("rsday")],
+            Err(Error::InvalidCharacter(0)),
+        ); // do not backtrack
 
         // fixed: am/pm
         check("am", &[fixed(LowerAmPm)], p().set_ampm(false));
@@ -889,18 +893,18 @@ mod tests {
         check(" Am", &[Space(" "), fixed(LowerAmPm)], p().set_ampm(false));
         check("Am🤠", &[fixed(LowerAmPm), Literal("🤠")], p().set_ampm(false));
         check("🤠Am", &[Literal("🤠"), fixed(LowerAmPm)], p().set_ampm(false));
-        check("\u{0363}am", &[fixed(LowerAmPm)], Err(INVALID));
-        check("\u{0360}am", &[fixed(LowerAmPm)], Err(INVALID));
-        check(" Am", &[fixed(LowerAmPm)], Err(INVALID));
+        check("\u{0363}am", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("\u{0360}am", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check(" Am", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
         check("Am ", &[fixed(LowerAmPm)], Err(TOO_LONG));
-        check("a.m.", &[fixed(LowerAmPm)], Err(INVALID));
-        check("A.M.", &[fixed(LowerAmPm)], Err(INVALID));
-        check("ame", &[fixed(LowerAmPm)], Err(TOO_LONG)); // `am` is parsed
-        check("a", &[fixed(LowerAmPm)], Err(TOO_SHORT));
-        check("p", &[fixed(LowerAmPm)], Err(TOO_SHORT));
-        check("x", &[fixed(LowerAmPm)], Err(TOO_SHORT));
-        check("xx", &[fixed(LowerAmPm)], Err(INVALID));
-        check("", &[fixed(LowerAmPm)], Err(TOO_SHORT));
+        check("a.m.", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("A.M.", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("ame", &[fixed(LowerAmPm)], Err(Error::TooLong)); // `am` is parsed
+        check("a", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("p", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("x", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("xx", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
+        check("", &[fixed(LowerAmPm)], Err(Error::InvalidCharacter(0)));
 
         Ok(())
     }
@@ -916,7 +920,7 @@ mod tests {
 
         // fixed: dot plus nanoseconds
         check("", &[fixed(Nanosecond)], Ok(&mut p())); // no field set, but not an error
-        check(".", &[fixed(Nanosecond)], Err(TOO_SHORT));
+        check(".", &[fixed(Nanosecond)], Err(Error::InvalidCharacter(0)));
         check("4", &[fixed(Nanosecond)], Err(TOO_LONG)); // never consumes `4`
         check("4", &[fixed(Nanosecond), num(Second)], p().set_second(4));
         check(".0", &[fixed(Nanosecond)], p().set_nanosecond(0));
@@ -940,15 +944,15 @@ mod tests {
         check(".0000000009999999999999999999999999", &[fixed(Nanosecond)], p().set_nanosecond(0));
         check(".4🤠", &[fixed(Nanosecond), Literal("🤠")], p().set_nanosecond(400_000_000));
         check(".4x", &[fixed(Nanosecond)], Err(TOO_LONG));
-        check(".  4", &[fixed(Nanosecond)], Err(INVALID));
+        check(".  4", &[fixed(Nanosecond)], Err(Error::InvalidCharacter(0)));
         check("  .4", &[fixed(Nanosecond)], Err(TOO_LONG)); // no automatic trimming
 
         // fixed: nanoseconds without the dot
-        check("", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check(".", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check("0", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check("4", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check("42", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
+        check("", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check("0", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check("4", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check("42", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
         check("421", &[internal_fixed(Nanosecond3NoDot)], p().set_nanosecond(421_000_000));
         check("4210", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
         check(
@@ -968,28 +972,28 @@ mod tests {
         );
         check("42195", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
         check("123456789", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
-        check("4x", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check("  4", &[internal_fixed(Nanosecond3NoDot)], Err(INVALID));
-        check(".421", &[internal_fixed(Nanosecond3NoDot)], Err(INVALID));
+        check("4x", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check("  4", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".421", &[internal_fixed(Nanosecond3NoDot)], Err(Error::InvalidCharacter(0)));
 
-        check("", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check(".", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check("0", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check("1234", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check("12345", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
+        check("", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check("0", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check("1234", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check("12345", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
         check("421950", &[internal_fixed(Nanosecond6NoDot)], p().set_nanosecond(421_950_000));
         check("000003", &[internal_fixed(Nanosecond6NoDot)], p().set_nanosecond(3000));
         check("000000", &[internal_fixed(Nanosecond6NoDot)], p().set_nanosecond(0));
         check("1234567", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_LONG));
         check("123456789", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_LONG));
-        check("4x", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check("     4", &[internal_fixed(Nanosecond6NoDot)], Err(INVALID));
-        check(".42100", &[internal_fixed(Nanosecond6NoDot)], Err(INVALID));
+        check("4x", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check("     4", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".42100", &[internal_fixed(Nanosecond6NoDot)], Err(Error::InvalidCharacter(0)));
 
-        check("", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
-        check(".", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
-        check("42195", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
-        check("12345678", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
+        check("", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
+        check("42195", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
+        check("12345678", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
         check("421950803", &[internal_fixed(Nanosecond9NoDot)], p().set_nanosecond(421_950_803));
         check("000000003", &[internal_fixed(Nanosecond9NoDot)], p().set_nanosecond(3));
         check(
@@ -999,9 +1003,9 @@ mod tests {
         ); // don't skip digits that come after the 9
         check("1234567890", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_LONG));
         check("000000000", &[internal_fixed(Nanosecond9NoDot)], p().set_nanosecond(0));
-        check("00000000x", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
-        check("        4", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
-        check(".42100000", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
+        check("00000000x", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
+        check("        4", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
+        check(".42100000", &[internal_fixed(Nanosecond9NoDot)], Err(Error::InvalidCharacter(0)));
 
         Ok(())
     }
@@ -1015,23 +1019,23 @@ mod tests {
         let p = Parsed::new;
 
         // TimezoneOffset
-        check("1", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("12", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("123", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("1234", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("12345", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("123456", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("1234567", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+1", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
-        check("+12", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
-        check("+123", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
+        check("1", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("12", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("123", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("1234", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("12345", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("123456", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("1234567", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+1", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+123", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+1234", &[fixed(TimezoneOffset)], p().set_offset(45_240));
         check("+12345", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+123456", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+1234567", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+12345678", &[fixed(TimezoneOffset)], Err(TOO_LONG));
-        check("+12:", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
-        check("+12:3", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
+        check("+12:", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12:3", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+12:34", &[fixed(TimezoneOffset)], p().set_offset(45_240));
         check("-12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240));
         check("−12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1039,15 +1043,15 @@ mod tests {
         check("+12:34:5", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+12:34:56", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+12:34:56:", &[fixed(TimezoneOffset)], Err(TOO_LONG));
-        check("+12 34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12  34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("12:34:56", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12::34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12: :34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12:::34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12::::34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+12::34", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("+12 34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12  34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("12:34:56", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12::34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12: :34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12:::34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12::::34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+12::34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+12:34:56", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+12:3456", &[fixed(TimezoneOffset)], Err(TOO_LONG));
         check("+1234:56", &[fixed(TimezoneOffset)], Err(TOO_LONG));
@@ -1064,29 +1068,29 @@ mod tests {
         check("−24:00", &[fixed(TimezoneOffset)], p().set_offset(-86_400)); // MINUS SIGN (U+2212)
         check("+99:59", &[fixed(TimezoneOffset)], p().set_offset(359_940));
         check("-99:59", &[fixed(TimezoneOffset)], p().set_offset(-359_940));
-        check("+00:60", &[fixed(TimezoneOffset)], Err(OUT_OF_RANGE));
-        check("+00:99", &[fixed(TimezoneOffset)], Err(OUT_OF_RANGE));
-        check("#12:34", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("+00:60", &[fixed(TimezoneOffset)], Err(Error::InvalidValue(0)));
+        check("+00:99", &[fixed(TimezoneOffset)], Err(Error::InvalidValue(0)));
+        check("#12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+12:34 ", &[fixed(TimezoneOffset)], Err(TOO_LONG));
-        check("+12 34 ", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("+12 34 ", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check(" +12:34", &[fixed(TimezoneOffset)], p().set_offset(45_240));
         check(" -12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240));
         check(" −12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
         check("  +12:34", &[fixed(TimezoneOffset)], p().set_offset(45_240));
         check("  -12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240));
         check("\t -12:34", &[fixed(TimezoneOffset)], p().set_offset(-45_240));
-        check("-12: 34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12 :34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12 : 34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12 :  34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12  : 34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12:  34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12  :34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("-12  :  34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("12:34 ", &[fixed(TimezoneOffset)], Err(INVALID));
-        check(" 12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
-        check("+", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
+        check("-12: 34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12 :34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12 : 34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12 :  34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12  : 34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12:  34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12  :34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("-12  :  34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("12:34 ", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check(" 12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check(
             "+12345",
             &[fixed(TimezoneOffset), num(Numeric::Day)],
@@ -1098,14 +1102,14 @@ mod tests {
             p().set_offset(45_240)?.set_day(5),
         );
         check("+12:34:", &[fixed(TimezoneOffset), Literal(":")], p().set_offset(45_240));
-        check("Z12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("X12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("Z+12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("X+12:34", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("X−12:34", &[fixed(TimezoneOffset)], Err(INVALID)); // MINUS SIGN (U+2212)
-        check("🤠+12:34", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("Z12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("X12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("Z+12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("X+12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("X−12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0))); // MINUS SIGN (U+2212)
+        check("🤠+12:34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+12:34🤠", &[fixed(TimezoneOffset)], Err(TOO_LONG));
-        check("+12:🤠34", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("+12:🤠34", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
         check("+1234🤠", &[fixed(TimezoneOffset), Literal("🤠")], p().set_offset(45_240));
         check("-1234🤠", &[fixed(TimezoneOffset), Literal("🤠")], p().set_offset(-45_240));
         check("−1234🤠", &[fixed(TimezoneOffset), Literal("🤠")], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1113,31 +1117,31 @@ mod tests {
         check("-12:34🤠", &[fixed(TimezoneOffset), Literal("🤠")], p().set_offset(-45_240));
         check("−12:34🤠", &[fixed(TimezoneOffset), Literal("🤠")], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
         check("🤠+12:34", &[Literal("🤠"), fixed(TimezoneOffset)], p().set_offset(45_240));
-        check("Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("A", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("PST", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("#Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check(":Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+Z", &[fixed(TimezoneOffset)], Err(TOO_SHORT));
-        check("+:Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("+Z:", &[fixed(TimezoneOffset)], Err(INVALID));
-        check("z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check(" :Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check(" Z", &[fixed(TimezoneOffset)], Err(INVALID));
-        check(" z", &[fixed(TimezoneOffset)], Err(INVALID));
+        check("Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("A", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("PST", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("#Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check(":Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+:Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("+Z:", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check("z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check(" :Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check(" Z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
+        check(" z", &[fixed(TimezoneOffset)], Err(Error::InvalidCharacter(0)));
 
         // TimezoneOffsetColon
-        check("1", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("123", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("1234", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12345", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("123456", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("1234567", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12345678", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+1", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check("+12", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check("+123", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
+        check("1", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("123", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("1234", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12345", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("123456", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("1234567", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12345678", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+1", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+123", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
         check("+1234", &[fixed(TimezoneOffsetColon)], p().set_offset(45_240));
         check("-1234", &[fixed(TimezoneOffsetColon)], p().set_offset(-45_240));
         check("−1234", &[fixed(TimezoneOffsetColon)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1145,16 +1149,16 @@ mod tests {
         check("+123456", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
         check("+1234567", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
         check("+12345678", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
-        check("1:", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:3", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:34:", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:34:5", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("12:34:56", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+1:", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12:", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check("+12:3", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
+        check("1:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:3", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:34:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:34:5", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("12:34:56", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+1:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12:3", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
         check("+12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(45_240));
         check("-12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(-45_240));
         check("−12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1167,33 +1171,33 @@ mod tests {
         check("+12:3456", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
         check("+1234:56", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
         check("−12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
-        check("−12 : 34", &[fixed(TimezoneOffsetColon)], Err(INVALID)); // MINUS SIGN (U+2212)
-        check("+12 :34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12: 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12: 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12 :34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12 : 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("-12 : 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12  : 34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12 :  34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12  :  34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12::34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12: :34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12:::34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12::::34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+12::34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("#1234", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("#12:34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
+        check("−12 : 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0))); // MINUS SIGN (U+2212)
+        check("+12 :34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12: 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12: 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12 :34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12 : 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("-12 : 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12  : 34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12 :  34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12  :  34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12::34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12: :34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12:::34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12::::34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+12::34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("#1234", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("#12:34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
         check("+12:34 ", &[fixed(TimezoneOffsetColon)], Err(TOO_LONG));
         check(" +12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(45_240));
         check("\t+12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(45_240));
         check("\t\t+12:34", &[fixed(TimezoneOffsetColon)], p().set_offset(45_240));
-        check("12:34 ", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check(" 12:34", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check("+", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check(":", &[fixed(TimezoneOffsetColon)], Err(INVALID));
+        check("12:34 ", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(" 12:34", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(":", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
         check(
             "+12345",
             &[fixed(TimezoneOffsetColon), num(Numeric::Day)],
@@ -1205,35 +1209,35 @@ mod tests {
             p().set_offset(45_240)?.set_day(5),
         );
         check("+12:34:", &[fixed(TimezoneOffsetColon), Literal(":")], p().set_offset(45_240));
-        check("Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("A", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("PST", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("#Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check(":Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+Z", &[fixed(TimezoneOffsetColon)], Err(TOO_SHORT));
-        check("+:Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("+Z:", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check("z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check(" :Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check(" Z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
-        check(" z", &[fixed(TimezoneOffsetColon)], Err(INVALID));
+        check("Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("A", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("PST", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("#Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(":Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+:Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("+Z:", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check("z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(" :Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(" Z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
+        check(" z", &[fixed(TimezoneOffsetColon)], Err(Error::InvalidCharacter(0)));
         // testing `TimezoneOffsetColon` also tests same path as `TimezoneOffsetDoubleColon`
         // and `TimezoneOffsetTripleColon` for function `parse_internal`.
         // No need for separate tests for `TimezoneOffsetDoubleColon` and
         // `TimezoneOffsetTripleColon`.
 
         // TimezoneOffsetZ
-        check("1", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("123", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("1234", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12345", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("123456", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("1234567", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12345678", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+1", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+12", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+123", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
+        check("1", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("123", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("1234", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12345", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("123456", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("1234567", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12345678", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+1", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+123", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("+1234", &[fixed(TimezoneOffsetZ)], p().set_offset(45_240));
         check("-1234", &[fixed(TimezoneOffsetZ)], p().set_offset(-45_240));
         check("−1234", &[fixed(TimezoneOffsetZ)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1241,16 +1245,16 @@ mod tests {
         check("+123456", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
         check("+1234567", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
         check("+12345678", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("1:", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:3", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:34:", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:34:5", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:34:56", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+1:", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12:", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+12:3", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
+        check("1:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:3", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:34:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:34:5", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:34:56", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+1:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12:3", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("+12:34", &[fixed(TimezoneOffsetZ)], p().set_offset(45_240));
         check("-12:34", &[fixed(TimezoneOffsetZ)], p().set_offset(-45_240));
         check("−12:34", &[fixed(TimezoneOffsetZ)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1260,21 +1264,21 @@ mod tests {
         check("+12:34:56:", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
         check("+12:34:56:7", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
         check("+12:34:56:78", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("+12::34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("+12::34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("+12:3456", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
         check("+1234:56", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("+12 34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12  34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12: 34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12 :34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12 : 34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12  : 34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12 :  34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+12  :  34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("12:34 ", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check(" 12:34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("+12 34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12  34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12: 34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12 :34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12 : 34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12  : 34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12 :  34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+12  :  34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("12:34 ", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(" 12:34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("+12:34 ", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("+12 34 ", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("+12 34 ", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check(" +12:34", &[fixed(TimezoneOffsetZ)], p().set_offset(45_240));
         check(
             "+12345",
@@ -1288,28 +1292,28 @@ mod tests {
         );
         check("+12:34:", &[fixed(TimezoneOffsetZ), Literal(":")], p().set_offset(45_240));
         check("Z12:34", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("X12:34", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("X12:34", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("Z", &[fixed(TimezoneOffsetZ)], p().set_offset(0));
         check("z", &[fixed(TimezoneOffsetZ)], p().set_offset(0));
         check(" Z", &[fixed(TimezoneOffsetZ)], p().set_offset(0));
         check(" z", &[fixed(TimezoneOffsetZ)], p().set_offset(0));
-        check("\u{0363}Z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("\u{0363}Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("Z ", &[fixed(TimezoneOffsetZ)], Err(TOO_LONG));
-        check("A", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("PST", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("#Z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check(":Z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check(":z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+Z", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("-Z", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+A", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+🙃", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("+Z:", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check(" :Z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check(" +Z", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check(" -Z", &[fixed(TimezoneOffsetZ)], Err(TOO_SHORT));
-        check("+:Z", &[fixed(TimezoneOffsetZ)], Err(INVALID));
-        check("Y", &[fixed(TimezoneOffsetZ)], Err(INVALID));
+        check("A", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("PST", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("#Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(":Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(":z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("-Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+A", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+🙃", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+Z:", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(" :Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(" +Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check(" -Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("+:Z", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
+        check("Y", &[fixed(TimezoneOffsetZ)], Err(Error::InvalidCharacter(0)));
         check("Zulu", &[fixed(TimezoneOffsetZ), Literal("ulu")], p().set_offset(0));
         check("zulu", &[fixed(TimezoneOffsetZ), Literal("ulu")], p().set_offset(0));
         check("+1234ulu", &[fixed(TimezoneOffsetZ), Literal("ulu")], p().set_offset(45_240));
@@ -1319,17 +1323,17 @@ mod tests {
         // No need for separate tests for `TimezoneOffsetColonZ`.
 
         // TimezoneOffsetPermissive
-        check("1", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("123", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("1234", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12345", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("123456", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("1234567", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12345678", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("+1", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
+        check("1", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("123", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("1234", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12345", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("123456", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("1234567", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12345678", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+1", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("+12", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(43_200));
-        check("+123", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
+        check("+123", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("+1234", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(45_240));
         check("-1234", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(-45_240));
         check("−1234", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(-45_240)); // MINUS SIGN (U+2212)
@@ -1337,14 +1341,14 @@ mod tests {
         check("+123456", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+1234567", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+12345678", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
-        check("1:", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:3", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:34:", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:34:5", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("12:34:56", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("+1:", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
+        check("1:", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:3", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:34:", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:34:5", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("12:34:56", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+1:", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("+12:", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(43_200));
         check("+12:3", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+12:34", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(45_240));
@@ -1373,8 +1377,8 @@ mod tests {
         check("+12::  34", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+12:::34", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+12::::34", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
-        check("12:34 ", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check(" 12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
+        check("12:34 ", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(" 12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("+12:34 ", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check(" +12:34", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(45_240));
         check(" -12:34", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(-45_240));
@@ -1394,7 +1398,7 @@ mod tests {
             &[internal_fixed(TimezoneOffsetPermissive), Literal(":")],
             p().set_offset(45_240),
         );
-        check("🤠+12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
+        check("🤠+12:34", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("+12:34🤠", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check("+12:🤠34", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
         check(
@@ -1408,26 +1412,26 @@ mod tests {
             p().set_offset(45_240),
         );
         check("Z", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(0));
-        check("A", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("PST", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
+        check("A", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("PST", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
         check("z", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(0));
         check(" Z", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(0));
         check(" z", &[internal_fixed(TimezoneOffsetPermissive)], p().set_offset(0));
         check("Z ", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_LONG));
-        check("#Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check(":Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check(":z", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("+Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
-        check("-Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
-        check("+A", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
-        check("+PST", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("+🙃", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("+Z:", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check(" :Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check(" +Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
-        check(" -Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(TOO_SHORT));
-        check("+:Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
-        check("Y", &[internal_fixed(TimezoneOffsetPermissive)], Err(INVALID));
+        check("#Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(":Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(":z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("-Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+A", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+PST", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+🙃", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+Z:", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(" :Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(" +Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check(" -Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("+:Z", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
+        check("Y", &[internal_fixed(TimezoneOffsetPermissive)], Err(Error::InvalidCharacter(0)));
 
         // TimezoneName
         check("CEST", &[fixed(TimezoneName)], Ok(&mut p()));
@@ -1608,14 +1612,14 @@ mod tests {
             ("11 Sep 2001 09:45:00 EST", Ok(ymd_hmsn(2001, 9, 11, 9, 45, 0, 0, -5))),
             ("11 Sep 2001 09:45:00 GMT", Ok(ymd_hmsn(2001, 9, 11, 9, 45, 0, 0, 0))),
             ("30 Feb 2015 17:35:20 -0800", Err(Error::DoesNotExist)), // bad day of month
-            ("Tue, 20 Jan 2015", Err(TOO_SHORT)),                     // omitted fields
-            ("Tue, 20 Avr 2015 17:35:20 -0800", Err(INVALID)),        // bad month name
-            ("Tue, 20 Jan 2015 25:35:20 -0800", Err(OUT_OF_RANGE)),   // bad hour
-            ("Tue, 20 Jan 2015 7:35:20 -0800", Err(INVALID)),         // bad # of digits in hour
-            ("Tue, 20 Jan 2015 17:65:20 -0800", Err(OUT_OF_RANGE)),   // bad minute
-            ("Tue, 20 Jan 2015 17:35:90 -0800", Err(OUT_OF_RANGE)),   // bad second
-            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(OUT_OF_RANGE)),   // bad offset
-            ("6 Jun 1944 04:00:00Z", Err(INVALID)), // bad offset (zulu not allowed)
+            ("Tue, 20 Jan 2015", Err(Error::InvalidCharacter(16))),    // omitted fields
+            ("Tue, 20 Avr 2015 17:35:20 -0800", Err(Error::InvalidValue(11))),        // bad month name
+            ("Tue, 20 Jan 2015 25:35:20 -0800", Err(Error::InvalidValue(19))),   // bad hour
+            ("Tue, 20 Jan 2015 7:35:20 -0800", Err(Error::InvalidCharacter(18))),         // bad # of digits in hour
+            ("Tue, 20 Jan 2015 17:65:20 -0800", Err(Error::InvalidValue(22))),   // bad minute
+            ("Tue, 20 Jan 2015 17:35:90 -0800", Err(Error::InvalidValue(25))),   // bad second
+            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(Error::InvalidValue(29))),   // bad offset
+            ("6 Jun 1944 04:00:00Z", Err(Error::InvalidCharacter(0))), // bad offset (zulu not allowed)
             // named timezones that have specific timezone offsets
             // see https://www.rfc-editor.org/rfc/rfc2822#section-4.3
             ("Tue, 20 Jan 2015 17:35:20 GMT", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, 0))),
@@ -1637,15 +1641,15 @@ mod tests {
             ("Tue, 20 Jan 2015 17:35:20 K", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, 0))),
             ("Tue, 20 Jan 2015 17:35:20 k", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, 0))),
             // named single-letter timezone "J" is specifically not valid
-            ("Tue, 20 Jan 2015 17:35:20 J", Err(INVALID)),
-            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(OUT_OF_RANGE)), // bad offset minutes
-            ("Tue, 20 Jan 2015 17:35:20Z", Err(INVALID)),           // bad offset: zulu not allowed
-            ("Tue, 20 Jan 2015 17:35:20 Zulu", Err(INVALID)),       // bad offset: zulu not allowed
-            ("Tue, 20 Jan 2015 17:35:20 ZULU", Err(INVALID)),       // bad offset: zulu not allowed
-            ("Tue, 20 Jan 2015 17:35:20 −0800", Err(INVALID)), // bad offset: timezone offset using MINUS SIGN (U+2212), not specified for RFC 2822
-            ("Tue, 20 Jan 2015 17:35:20 0800", Err(INVALID)),  // missing offset sign
-            ("Tue, 20 Jan 2015 17:35:20 HAS", Err(INVALID)),   // bad named timezone
-            ("Tue, 20 Jan 2015😈17:35:20 -0800", Err(INVALID)), // bad character!
+            ("Tue, 20 Jan 2015 17:35:20 J", Err(Error::InvalidCharacter(0))),
+            ("Tue, 20 Jan 2015 17:35:20 -0890", Err(Error::InvalidValue(0))), // bad offset minutes
+            ("Tue, 20 Jan 2015 17:35:20Z", Err(Error::InvalidCharacter(0))),           // bad offset: zulu not allowed
+            ("Tue, 20 Jan 2015 17:35:20 Zulu", Err(Error::InvalidCharacter(0))),       // bad offset: zulu not allowed
+            ("Tue, 20 Jan 2015 17:35:20 ZULU", Err(Error::InvalidCharacter(0))),       // bad offset: zulu not allowed
+            ("Tue, 20 Jan 2015 17:35:20 −0800", Err(Error::InvalidCharacter(0))), // bad offset: timezone offset using MINUS SIGN (U+2212), not specified for RFC 2822
+            ("Tue, 20 Jan 2015 17:35:20 0800", Err(Error::InvalidCharacter(0))),  // missing offset sign
+            ("Tue, 20 Jan 2015 17:35:20 HAS", Err(Error::InvalidCharacter(0))),   // bad named timezone
+            ("Tue, 20 Jan 2015😈17:35:20 -0800", Err(Error::InvalidCharacter(0))), // bad character!
         ];
 
         fn rfc2822_to_datetime(date: &str) -> Result<DateTime<FixedOffset>, Error> {
@@ -1769,45 +1773,45 @@ mod tests {
                 Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, -8)),
             ), // too small with MINUS SIGN (U+2212)
             ("2015-01-20 17:35:20-08:00", Ok(ymd_hmsn(2015, 1, 20, 17, 35, 20, 0, -8))), // without 'T'
-            ("2015/01/20T17:35:20.001-08:00", Err(Error::InvalidCharacter)), // wrong separator char YMD
-            ("2015-01-20T17-35-20.001-08:00", Err(Error::InvalidCharacter)), // wrong separator char HMS
-            ("-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),         // missing year
-            ("99-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),       // bad year format
-            ("99999-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
-            ("-2000-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)),    // bad year value
+            ("2015/01/20T17:35:20.001-08:00", Err(Error::InvalidCharacter(0))), // wrong separator char YMD
+            ("2015-01-20T17-35-20.001-08:00", Err(Error::InvalidCharacter(0))), // wrong separator char HMS
+            ("-01-20T17:35:20-08:00", Err(Error::InvalidCharacter(0))),         // missing year
+            ("99-01-20T17:35:20-08:00", Err(Error::InvalidCharacter(0))),       // bad year format
+            ("99999-01-20T17:35:20-08:00", Err(Error::InvalidCharacter(0))),    // bad year value
+            ("-2000-01-20T17:35:20-08:00", Err(Error::InvalidCharacter(0))),    // bad year value
             ("2015-02-30T17:35:20-08:00", Err(Error::DoesNotExist)), // bad day of month value
-            ("2015-01-20T25:35:20-08:00", Err(Error::InvalidValue)), // bad hour value
-            ("2015-01-20T17:65:20-08:00", Err(Error::InvalidValue)), // bad minute value
-            ("2015-01-20T17:35:90-08:00", Err(Error::InvalidValue)), // bad second value
-            ("2015-01-20T17:35:20-24:00", Err(Error::InvalidValue)), // bad offset value
-            ("15-01-20T17:35:20-08:00", Err(Error::InvalidCharacter)), // bad year format
-            ("15-01-20T17:35:20-08:00:00", Err(Error::InvalidCharacter)), // bad year format, bad offset format
-            ("2015-01-20T17:35:2008:00", Err(Error::InvalidCharacter)),   // missing offset sign
-            ("2015-01-20T17:35:20 08:00", Err(Error::InvalidCharacter)),  // missing offset sign
+            ("2015-01-20T25:35:20-08:00", Err(Error::InvalidValue(0))), // bad hour value
+            ("2015-01-20T17:65:20-08:00", Err(Error::InvalidValue(0))), // bad minute value
+            ("2015-01-20T17:35:90-08:00", Err(Error::InvalidValue(0))), // bad second value
+            ("2015-01-20T17:35:20-24:00", Err(Error::InvalidValue(0))), // bad offset value
+            ("15-01-20T17:35:20-08:00", Err(Error::InvalidCharacter(0))), // bad year format
+            ("15-01-20T17:35:20-08:00:00", Err(Error::InvalidCharacter(0))), // bad year format, bad offset format
+            ("2015-01-20T17:35:2008:00", Err(Error::InvalidCharacter(0))),   // missing offset sign
+            ("2015-01-20T17:35:20 08:00", Err(Error::InvalidCharacter(0))),  // missing offset sign
             ("2015-01-20T17:35:20Zulu", Err(Error::TooLong)),             // bad offset format
-            ("2015-01-20T17:35:20 Zulu", Err(Error::InvalidCharacter)),   // bad offset format
-            ("2015-01-20T17:35:20GMT", Err(Error::InvalidCharacter)),     // bad offset format
-            ("2015-01-20T17:35:20 GMT", Err(Error::InvalidCharacter)),    // bad offset format
-            ("2015-01-20T17:35:20+GMT", Err(Error::InvalidCharacter)),    // bad offset format
-            ("2015-01-20T17:35:20++08:00", Err(Error::InvalidCharacter)), // bad offset format
-            ("2015-01-20T17:35:20--08:00", Err(Error::InvalidCharacter)), // bad offset format
-            ("2015-01-20T17:35:20−−08:00", Err(Error::InvalidCharacter)), // bad offset format with MINUS SIGN (U+2212)
-            ("2015-01-20T17:35:20±08:00", Err(Error::InvalidCharacter)),  // bad offset sign
-            ("2015-01-20T17:35:20-08-00", Err(Error::InvalidCharacter)),  // bad offset separator
-            ("2015-01-20T17:35:20-08;00", Err(Error::InvalidCharacter)),  // bad offset separator
-            ("2015-01-20T17:35:20-0800", Err(Error::InvalidCharacter)),   // bad offset separator
-            ("2015-01-20T17:35:20-08:0", Err(Error::TooShort)),           // bad offset minutes
-            ("2015-01-20T17:35:20-08:AA", Err(Error::InvalidCharacter)),  // bad offset minutes
-            ("2015-01-20T17:35:20-08:ZZ", Err(Error::InvalidCharacter)),  // bad offset minutes
-            ("2015-01-20T17:35:20.001-08 : 00", Err(Error::InvalidCharacter)), // bad offset separator
+            ("2015-01-20T17:35:20 Zulu", Err(Error::InvalidCharacter(0))),   // bad offset format
+            ("2015-01-20T17:35:20GMT", Err(Error::InvalidCharacter(0))),     // bad offset format
+            ("2015-01-20T17:35:20 GMT", Err(Error::InvalidCharacter(0))),    // bad offset format
+            ("2015-01-20T17:35:20+GMT", Err(Error::InvalidCharacter(0))),    // bad offset format
+            ("2015-01-20T17:35:20++08:00", Err(Error::InvalidCharacter(0))), // bad offset format
+            ("2015-01-20T17:35:20--08:00", Err(Error::InvalidCharacter(0))), // bad offset format
+            ("2015-01-20T17:35:20−−08:00", Err(Error::InvalidCharacter(0))), // bad offset format with MINUS SIGN (U+2212)
+            ("2015-01-20T17:35:20±08:00", Err(Error::InvalidCharacter(0))),  // bad offset sign
+            ("2015-01-20T17:35:20-08-00", Err(Error::InvalidCharacter(0))),  // bad offset separator
+            ("2015-01-20T17:35:20-08;00", Err(Error::InvalidCharacter(0))),  // bad offset separator
+            ("2015-01-20T17:35:20-0800", Err(Error::InvalidCharacter(0))),   // bad offset separator
+            ("2015-01-20T17:35:20-08:0", Err(Error::InvalidCharacter(0))),           // bad offset minutes
+            ("2015-01-20T17:35:20-08:AA", Err(Error::InvalidCharacter(0))),  // bad offset minutes
+            ("2015-01-20T17:35:20-08:ZZ", Err(Error::InvalidCharacter(0))),  // bad offset minutes
+            ("2015-01-20T17:35:20.001-08 : 00", Err(Error::InvalidCharacter(0))), // bad offset separator
             ("2015-01-20T17:35:20-08:00:00", Err(Error::TooLong)),             // bad offset format
-            ("2015-01-20T17:35:20+08:", Err(Error::TooShort)),                 // bad offset format
-            ("2015-01-20T17:35:20-08:", Err(Error::TooShort)),                 // bad offset format
-            ("2015-01-20T17:35:20−08:", Err(Error::TooShort)), // bad offset format with MINUS SIGN (U+2212)
-            ("2015-01-20T17:35:20-08", Err(Error::TooShort)),  // bad offset format
-            ("2015-01-20T", Err(Error::TooShort)),             // missing HMS
-            ("2015-01-20T00:00:1", Err(Error::TooShort)),      // missing complete S
-            ("2015-01-20T00:00:1-08:00", Err(Error::InvalidCharacter)), // missing complete S
+            ("2015-01-20T17:35:20+08:", Err(Error::InvalidCharacter(0))),                 // bad offset format
+            ("2015-01-20T17:35:20-08:", Err(Error::InvalidCharacter(0))),                 // bad offset format
+            ("2015-01-20T17:35:20−08:", Err(Error::InvalidCharacter(0))), // bad offset format with MINUS SIGN (U+2212)
+            ("2015-01-20T17:35:20-08", Err(Error::InvalidCharacter(0))),  // bad offset format
+            ("2015-01-20T", Err(Error::InvalidCharacter(0))),             // missing HMS
+            ("2015-01-20T00:00:1", Err(Error::InvalidCharacter(0))),      // missing complete S
+            ("2015-01-20T00:00:1-08:00", Err(Error::InvalidCharacter(0))), // missing complete S
         ];
 
         // Test against test data above
@@ -1827,6 +1831,6 @@ mod tests {
     fn test_issue_1010() {
         let dt = crate::NaiveDateTime::parse_from_str("\u{c}SUN\u{e}\u{3000}\0m@J\u{3000}\0\u{3000}\0m\u{c}!\u{c}\u{b}\u{c}\u{c}\u{c}\u{c}%A\u{c}\u{b}\0SU\u{c}\u{c}",
         "\u{c}\u{c}%A\u{c}\u{b}\0SUN\u{c}\u{c}\u{c}SUNN\u{c}\u{c}\u{c}SUN\u{c}\u{c}!\u{c}\u{b}\u{c}\u{c}\u{c}\u{c}%A\u{c}\u{b}%a");
-        assert_eq!(dt, Err(Error::InvalidCharacter));
+        assert_eq!(dt, Err(Error::InvalidCharacter(4)));
     }
 }

@@ -31,13 +31,18 @@ pub enum Error {
     InvalidArgument,
 
     /// Character does not match with the expected format (during parsing).
-    InvalidCharacter,
+    ///
+    /// Contains the byte index of the character where the input diverges.
+    InvalidCharacter(usize),
 
     /// Value is not allowed by the format (during parsing).
     ///
     /// Examples are a number that is larger or smaller than the defined range, or the name of a
     /// weekday, month or timezone that doesn't match.
-    InvalidValue,
+    ///
+    /// Contains the byte index pointing at the start of the invalid value, and the length of the
+    /// value.
+    InvalidValue(u32, u8),
 
     /// The result, or an intermediate value necessary for calculating a result, would be out of
     /// range.
@@ -54,9 +59,10 @@ pub enum Error {
     /// TEMPORARY
     TooShort,
 
-    /// There was an error on the formatting string, or there were non-supported formating items.
-    /// TEMPORARY
-    BadFormat,
+    /// The format string contains a formatting specifier that is not supported.
+    ///
+    /// Contains the byte index of the formatting specifier within the format string.
+    UnsupportedSpecifier,
 }
 
 impl fmt::Display for Error {
@@ -68,12 +74,18 @@ impl fmt::Display for Error {
                 write!(f, "some of the date or time components are not consistent with each other")
             }
             Error::InvalidArgument => write!(f, "invalid parameter"),
-            Error::InvalidCharacter => write!(f, "input doesn't match with the expected format"),
-            Error::InvalidValue => write!(f, "input has a value not allowed by the format"),
+            Error::InvalidCharacter(i) => {
+                write!(f, "input doesn't match with the expected format at position {}", i)
+            }
+            Error::InvalidValue(i, len) => {
+                write!(f, "input has a value not allowed by the format at position {} with len {}", i, len)
+            }
             Error::OutOfRange => write!(f, "date outside of the supported range"),
             Error::TooLong => write!(f, "trailing input"),
             Error::TooShort => write!(f, "premature end of input"),
-            Error::BadFormat => write!(f, "bad or unsupported format string"),
+            Error::UnsupportedSpecifier => {
+                write!(f, "format string contains a formatting specifier that is not supported")
+            }
         }
     }
 }

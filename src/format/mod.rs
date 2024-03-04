@@ -381,7 +381,7 @@ impl<'a> Item<'a> {
 /// The category of parse error
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ParseError {
+enum ParseError<'a> {
     /// Some of the date or time components are not consistent with each other.
     ///
     /// During parsing this only arises if a field is set for a second time in the `Parsed` type,
@@ -392,16 +392,20 @@ enum ParseError {
 
     /// Character does not match with the expected format.
     ///
-    /// Maps to `Error::InvalidCharacter`.
-    InvalidCharacter,
+    /// Contains a reference to the remaining slice, starting with the mismatched character.
+    ///
+    /// Maps to `Error::InvalidCharacter(index)`.
+    InvalidCharacter(&'a str),
 
     /// Value is not allowed by the format.
     ///
     /// Examples are a number that is larger or smaller than the defined range, or the name of a
     /// weekday, month or timezone that doesn't match.
     ///
-    /// Maps to `Error::InvalidValue`.
-    InvalidValue,
+    /// Contains a reference to the remaining slice, starting with invalid value.
+    ///
+    /// Maps to `Error::InvalidValue(index)`.
+    InvalidValue(&'a str),
 
     /// The input is shorter than expected by the format.
     ///
@@ -410,25 +414,28 @@ enum ParseError {
 
     /// There was an error on the formatting string, or there were non-supported formating items.
     /// TEMPORARY
-    BadFormat,
+    UnsupportedSpecifier,
 }
 
-impl ParseError {
-    fn to_error(&self, _src_str: &str) -> Error {
+impl<'a> ParseError<'a> {
+    fn to_error(&self, src_str: &str) -> Error {
         match self {
             ParseError::Inconsistent => Error::Inconsistent,
-            ParseError::InvalidCharacter => Error::InvalidCharacter,
-            ParseError::InvalidValue => Error::InvalidValue,
-            ParseError::TooShort => Error::TooShort,
-            ParseError::BadFormat => Error::BadFormat,
+            ParseError::InvalidCharacter(r) => Error::InvalidCharacter(src_str.len() - r.len()),
+            ParseError::InvalidValue(r) => {
+                let index = u32::try_from(src_str.len() - r.len()).unwrap_or(u32::MAX);
+                Error::InvalidValue(index, 0)
+            },
+            ParseError::TooShort => Error::InvalidCharacter(src_str.len()),
+            ParseError::UnsupportedSpecifier => Error::UnsupportedSpecifier,
         }
     }
 }
 
-fn parse_error(error: Error, _remainder: &str) -> ParseError {
+fn parse_error<'a>(error: Error, remainder: &'a str) -> ParseError<'a> {
     match error {
         Error::Inconsistent => ParseError::Inconsistent,
-        Error::InvalidArgument => ParseError::InvalidValue,
+        Error::InvalidArgument => ParseError::InvalidValue(remainder),
         _ => panic!("`Parsed::set_*` should only return `Inconsistent` or `InvalidArgument`"),
     }
 }
