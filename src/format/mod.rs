@@ -35,7 +35,7 @@ use alloc::boxed::Box;
 use core::fmt;
 use core::str::FromStr;
 
-use crate::{Error, Month, ParseWeekdayError, Weekday};
+use crate::{Error, Month, Weekday};
 
 mod formatting;
 mod parsed;
@@ -467,13 +467,13 @@ fn parse_error<'a>(error: Error, remainder: &'a str) -> ParseError<'a> {
 /// assert!("thurs".parse::<Weekday>().is_err());
 /// ```
 impl FromStr for Weekday {
-    type Err = ParseWeekdayError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(("", w)) = scan::short_or_long_weekday(s) {
-            Ok(w)
-        } else {
-            Err(ParseWeekdayError { _dummy: () })
+    fn from_str(s: &str) -> Result<Self, Error> {
+        match scan::short_or_long_weekday(s) {
+            Ok(("", w)) => Ok(w),
+            Ok(_) => Err(Error::TooLong),
+            Err(_) => Err(Error::InvalidCharacter(0)),
         }
     }
 }

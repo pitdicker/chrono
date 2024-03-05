@@ -523,8 +523,6 @@ pub mod round;
 pub use round::{DurationRound, RoundingError, SubsecRound};
 
 mod weekday;
-#[doc(no_inline)]
-pub use weekday::ParseWeekdayError;
 pub use weekday::Weekday;
 
 mod month;

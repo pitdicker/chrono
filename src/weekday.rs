@@ -192,28 +192,7 @@ impl TryFrom<u8> for Weekday {
     }
 }
 
-/// An error resulting from reading `Weekday` value with `FromStr`.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ParseWeekdayError {
-    pub(crate) _dummy: (),
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for ParseWeekdayError {}
-
-impl fmt::Display for ParseWeekdayError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!("{:?}", self))
-    }
-}
-
-impl fmt::Debug for ParseWeekdayError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ParseWeekdayError {{ .. }}")
-    }
-}
-
-// the actual `FromStr` implementation is in the `format` module to leverage the existing code
+// The `FromStr` implementation is in the `format` module to leverage the parsing code.
 
 #[cfg(feature = "serde")]
 mod weekday_serde {
