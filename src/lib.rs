@@ -528,8 +528,6 @@ pub use weekday::ParseWeekdayError;
 pub use weekday::Weekday;
 
 mod month;
-#[doc(no_inline)]
-pub use month::ParseMonthError;
 pub use month::{Month, Months};
 
 mod traits;

@@ -1,5 +1,3 @@
-use core::fmt;
-
 #[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -185,6 +183,8 @@ impl TryFrom<u8> for Month {
     }
 }
 
+// The `FromStr` implementation is in the `format` module to leverage the parsing code.
+
 /// A duration in calendar months
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
@@ -200,27 +200,6 @@ impl Months {
     #[inline]
     pub const fn as_u32(&self) -> u32 {
         self.0
-    }
-}
-
-/// An error resulting from reading `<Month>` value with `FromStr`.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ParseMonthError {
-    pub(crate) _dummy: (),
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for ParseMonthError {}
-
-impl fmt::Display for ParseMonthError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ParseMonthError {{ .. }}")
-    }
-}
-
-impl fmt::Debug for ParseMonthError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ParseMonthError {{ .. }}")
     }
 }
 

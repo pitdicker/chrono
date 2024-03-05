@@ -35,7 +35,7 @@ use alloc::boxed::Box;
 use core::fmt;
 use core::str::FromStr;
 
-use crate::{Error, Month, ParseMonthError, ParseWeekdayError, Weekday};
+use crate::{Error, Month, ParseWeekdayError, Weekday};
 
 mod formatting;
 mod parsed;
@@ -504,11 +504,11 @@ impl FromStr for Weekday {
 /// assert!("Augustin".parse::<Month>().is_err());
 /// ```
 impl FromStr for Month {
-    type Err = ParseMonthError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(("", w)) = scan::short_or_long_month0(s) {
-            match w {
+    fn from_str(s: &str) -> Result<Self, Error> {
+        match scan::short_or_long_month0(s) {
+            Ok(("", m)) => match m {
                 0 => Ok(Month::January),
                 1 => Ok(Month::February),
                 2 => Ok(Month::March),
@@ -521,10 +521,10 @@ impl FromStr for Month {
                 9 => Ok(Month::October),
                 10 => Ok(Month::November),
                 11 => Ok(Month::December),
-                _ => Err(ParseMonthError { _dummy: () }),
+                _ => unreachable!(),
             }
-        } else {
-            Err(ParseMonthError { _dummy: () })
+            Ok(_) => Err(Error::TooLong),
+            Err(_) => Err(Error::InvalidCharacter(0)),
         }
     }
 }
