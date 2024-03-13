@@ -223,9 +223,6 @@ pub trait TimeZone: Sized + Clone {
     /// Reconstructs the time zone from the offset.
     fn from_offset(offset: &Self::Offset) -> Self;
 
-    /// Creates the offset(s) for given local `NaiveDateTime` if possible.
-    fn offset_from_local_datetime(&self, local: &NaiveDateTime) -> LocalResult<Self::Offset>;
-
     /// Converts the local `NaiveDateTime` to the timezone-aware `DateTime` if possible.
     #[allow(clippy::wrong_self_convention)]
     fn from_local_datetime(&self, local: &NaiveDateTime) -> LocalResult<DateTime<Self>> {

@@ -206,7 +206,7 @@ impl Ord for Transition {
 fn lookup_with_dst_transitions(
     transitions: &[Transition],
     dt: NaiveDateTime,
-) -> LocalResult<FixedOffset> {
+) -> LocalResult<DateTime<FixedOffset>> {
     for t in transitions.iter() {
         // A transition can result in the wall clock time going forward (creating a gap) or going
         // backward (creating a fold). We are interested in the earliest and latest wall time of the
