@@ -60,7 +60,7 @@ mod inner {
 
     pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
         let offset = js_sys::Date::from(utc.and_utc()).get_timezone_offset();
-        MappedLocalTime::Single(FixedOffset::west((offset as i32) * 60).unwrap())
+        MappedLocalTime::Single(FixedOffset::west((offset * 60.0) as i32).unwrap())
     }
 
     pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
@@ -83,7 +83,7 @@ mod inner {
         );
         let offset = js_date.get_timezone_offset();
         // We always get a result, even if this time does not exist or is ambiguous.
-        MappedLocalTime::Single(FixedOffset::west((offset as i32) * 60).unwrap())
+        MappedLocalTime::Single(FixedOffset::west((offset * 60.0) as i32).unwrap())
     }
 }
 
