@@ -40,8 +40,8 @@ mod inner {
 
     pub(super) fn offset_from_utc_datetime(
         _utc_time: NaiveDateTime,
-    ) -> MappedLocalTime<FixedOffset> {
-        MappedLocalTime::Single(FixedOffset::east(0).unwrap())
+    ) -> Result<FixedOffset, TzError> {
+        Ok(FixedOffset::east(0).unwrap())
     }
 
     pub(super) fn offset_from_local_datetime(
@@ -59,9 +59,9 @@ mod inner {
 mod inner {
     use crate::{Datelike, FixedOffset, MappedLocalTime, NaiveDateTime, Timelike};
 
-    pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
+    pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> Result<FixedOffset, TzError> {
         let offset = js_sys::Date::from(utc.and_utc()).get_timezone_offset();
-        MappedLocalTime::Single(FixedOffset::west((offset * 60.0) as i32).unwrap())
+        FixedOffset::west((offset * 60.0) as i32).map_err(|_| TzError::InvalidTimeZoneData)
     }
 
     pub(super) fn offset_from_local_datetime(
@@ -168,8 +168,8 @@ impl TimeZone for Local {
         inner::offset_from_local_datetime(local)
     }
 
-    fn offset_from_utc_datetime(&self, utc: NaiveDateTime) -> FixedOffset {
-        inner::offset_from_utc_datetime(utc).unwrap()
+    fn offset_from_utc_datetime(&self, utc: NaiveDateTime) -> Result<FixedOffset, TzError> {
+        inner::offset_from_utc_datetime(utc)
     }
 }
 

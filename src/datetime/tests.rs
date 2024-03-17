@@ -87,7 +87,7 @@ impl TimeZone for DstTester {
         }
     }
 
-    fn offset_from_utc_datetime(&self, utc: NaiveDateTime) -> Self::Offset {
+    fn offset_from_utc_datetime(&self, utc: NaiveDateTime) -> Result<Self::Offset, TzError> {
         let utc_to_winter_transition = NaiveDate::from_ymd(
             utc.year(),
             DstTester::TO_WINTER_MONTH_DAY.0,
@@ -107,9 +107,9 @@ impl TimeZone for DstTester {
             - DstTester::winter_offset();
 
         if utc < utc_to_winter_transition || utc >= utc_to_summer_transition {
-            DstTester::summer_offset()
+            Ok(DstTester::summer_offset())
         } else if utc >= utc_to_winter_transition && utc < utc_to_summer_transition {
-            DstTester::winter_offset()
+            Ok(DstTester::winter_offset())
         } else {
             panic!("Unexpected utc time {}", utc)
         }

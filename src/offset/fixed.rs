@@ -121,8 +121,8 @@ impl TimeZone for FixedOffset {
         Ok(MappedLocalTime::Single(*self))
     }
 
-    fn offset_from_utc_datetime(&self, _utc: NaiveDateTime) -> FixedOffset {
-        *self
+    fn offset_from_utc_datetime(&self, _utc: NaiveDateTime) -> Result<FixedOffset, TzError> {
+        Ok(*self)
     }
 }
 

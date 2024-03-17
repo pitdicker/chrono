@@ -122,8 +122,8 @@ impl TimeZone for Utc {
         Ok(MappedLocalTime::Single(Utc))
     }
 
-    fn offset_from_utc_datetime(&self, _utc: NaiveDateTime) -> Utc {
-        Utc
+    fn offset_from_utc_datetime(&self, _utc: NaiveDateTime) -> Result<Utc, TzError> {
+        Ok(Utc)
     }
 }
 

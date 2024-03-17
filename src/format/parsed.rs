@@ -899,7 +899,8 @@ impl Parsed {
             let dt = DateTime::from_timestamp(timestamp, nanosecond)
                 .map_err(|_| OUT_OF_RANGE)?
                 .naive_utc();
-            guessed_offset = tz.offset_from_utc_datetime(dt).fix().local_minus_utc();
+            guessed_offset =
+                tz.offset_from_utc_datetime(dt).map_err(|_| IMPOSSIBLE)?.fix().local_minus_utc();
         }
 
         // checks if the given `DateTime` has a consistent `Offset` with given `self.offset`.

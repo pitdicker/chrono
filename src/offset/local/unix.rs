@@ -15,8 +15,11 @@ use super::{FixedOffset, NaiveDateTime};
 use crate::error::TzError;
 use crate::{Datelike, MappedLocalTime};
 
-pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
-    offset(utc, false)
+pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> Result<FixedOffset, TzError> {
+    match offset(utc, false) {
+        MappedLocalTime::Single(o) => Ok(o),
+        _ => Err(TzError::InvalidTimeZoneData),
+    }
 }
 
 pub(super) fn offset_from_local_datetime(
