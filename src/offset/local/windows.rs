@@ -14,10 +14,9 @@ use std::ptr;
 
 use super::win_bindings::{GetTimeZoneInformationForYear, SYSTEMTIME, TIME_ZONE_INFORMATION};
 
+use crate::error::{Error, OsError, TzError};
 use crate::offset::local::{lookup_with_dst_transitions, Transition};
-use crate::{
-    Datelike, Error, FixedOffset, MappedLocalTime, NaiveDate, NaiveDateTime, NaiveTime, Weekday,
-};
+use crate::{Datelike, FixedOffset, MappedLocalTime, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
 
 // We don't use `SystemTimeToTzSpecificLocalTime` because it doesn't support the same range of dates
 // as Chrono. Also it really isn't that difficult to work out the correct offset from the provided
@@ -31,8 +30,8 @@ pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<Fi
     // using the rules for the year of the corresponding local time. But this matches what
     // `SystemTimeToTzSpecificLocalTime` is documented to do.
     let tz_info = match TzInfo::for_year(utc.year()) {
-        Some(tz_info) => tz_info,
-        None => return MappedLocalTime::None,
+        Ok(tz_info) => tz_info,
+        Err(_) => return MappedLocalTime::None,
     };
     let offset = match (tz_info.std_transition, tz_info.dst_transition) {
         (Some(std_transition), Some(dst_transition)) => {
@@ -74,8 +73,8 @@ pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<Fi
 // current year and compute it ourselves, like we do on Unix.
 pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
     let tz_info = match TzInfo::for_year(local.year()) {
-        Some(tz_info) => tz_info,
-        None => return MappedLocalTime::None,
+        Ok(tz_info) => tz_info,
+        Err(_) => return MappedLocalTime::None,
     };
     // Create a sorted slice of transitions and use `lookup_with_dst_transitions`.
     match (tz_info.std_transition, tz_info.dst_transition) {
@@ -129,7 +128,7 @@ struct TzInfo {
 }
 
 impl TzInfo {
-    fn for_year(year: i32) -> Option<TzInfo> {
+    fn for_year(year: i32) -> Result<TzInfo, TzError> {
         // The API limits years to 1601..=30827.
         // Working with timezones and daylight saving time this far into the past or future makes
         // little sense. But whatever is extrapolated for 1601 or 30827 is what can be extrapolated
@@ -138,23 +137,25 @@ impl TzInfo {
         let tz_info = unsafe {
             let mut tz_info = MaybeUninit::<TIME_ZONE_INFORMATION>::uninit();
             if GetTimeZoneInformationForYear(ref_year, ptr::null_mut(), tz_info.as_mut_ptr()) == 0 {
-                return None;
+                return Err(OsError::last().into());
             }
             tz_info.assume_init()
         };
         let std_offset = (tz_info.Bias)
             .checked_add(tz_info.StandardBias)
             .and_then(|o| o.checked_mul(60))
-            .and_then(|o| FixedOffset::west(o).ok())?;
+            .and_then(|o| FixedOffset::west(o).ok())
+            .ok_or(TzError::InvalidTimeZoneData)?;
         let dst_offset = (tz_info.Bias)
             .checked_add(tz_info.DaylightBias)
             .and_then(|o| o.checked_mul(60))
-            .and_then(|o| FixedOffset::west(o).ok())?;
-        Some(TzInfo {
+            .and_then(|o| FixedOffset::west(o).ok())
+            .ok_or(TzError::InvalidTimeZoneData)?;
+        Ok(TzInfo {
             std_offset,
             dst_offset,
-            std_transition: naive_date_time_from_system_time(tz_info.StandardDate, year).ok()?,
-            dst_transition: naive_date_time_from_system_time(tz_info.DaylightDate, year).ok()?,
+            std_transition: naive_date_time_from_system_time(tz_info.StandardDate, year)?,
+            dst_transition: naive_date_time_from_system_time(tz_info.DaylightDate, year)?,
         })
     }
 }
@@ -167,11 +168,12 @@ impl TzInfo {
 /// If the year is missing the `SYSTEMTIME` is a rule, which this method resolves for the provided
 /// year. A rule has a month, weekday, and nth weekday of the month as components.
 ///
-/// Returns `Err` if any of the values is invalid, which should never happen.
+/// Returns `TzError::TzError::InvalidTimeZoneData` if any of the values is invalid, which should
+/// never happen.
 fn naive_date_time_from_system_time(
     st: SYSTEMTIME,
     year: i32,
-) -> Result<Option<NaiveDateTime>, ()> {
+) -> Result<Option<NaiveDateTime>, TzError> {
     if st.wYear == 0 && st.wMonth == 0 {
         return Ok(None);
     }
@@ -181,12 +183,12 @@ fn naive_date_time_from_system_time(
         st.wSecond as u32,
         st.wMilliseconds as u32,
     )
-    .map_err(|_| ())?;
+    .map_err(|_| TzError::InvalidTimeZoneData)?;
 
     if st.wYear != 0 {
         // We have a concrete date.
         let date = NaiveDate::from_ymd(st.wYear as i32, st.wMonth as u32, st.wDay as u32)
-            .map_err(|_| ())?;
+            .map_err(|_| TzError::InvalidTimeZoneData)?;
         return Ok(Some(date.and_time(time)));
     }
 
@@ -200,18 +202,18 @@ fn naive_date_time_from_system_time(
         4 => Weekday::Thu,
         5 => Weekday::Fri,
         6 => Weekday::Sat,
-        _ => return Err(()),
+        _ => return Err(TzError::InvalidTimeZoneData),
     };
     let nth_day = match st.wDay {
         1..=5 => st.wDay as u8,
-        _ => return Err(()),
+        _ => return Err(TzError::InvalidTimeZoneData),
     };
     let date = match NaiveDate::from_weekday_of_month(year, st.wMonth as u32, weekday, nth_day) {
         Ok(date) => date,
         Err(Error::DoesNotExist) => {
             NaiveDate::from_weekday_of_month(year, st.wMonth as u32, weekday, 4).unwrap()
         }
-        Err(_) => return Err(()), // `st.wMonth` must be invalid
+        Err(_) => return Err(TzError::InvalidTimeZoneData), // `st.wMonth` must be invalid
     };
     Ok(Some(date.and_time(time)))
 }
