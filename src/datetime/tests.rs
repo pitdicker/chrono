@@ -1,11 +1,10 @@
 use super::DateTime;
+use crate::error::{Error, TzError};
 use crate::naive::{NaiveDate, NaiveTime};
 use crate::offset::{FixedOffset, TimeZone, Utc};
 #[cfg(feature = "clock")]
 use crate::offset::{Local, Offset};
-use crate::{
-    Datelike, Days, Error, MappedLocalTime, Months, NaiveDateTime, TimeDelta, Timelike, Weekday,
-};
+use crate::{Datelike, Days, MappedLocalTime, Months, NaiveDateTime, TimeDelta, Timelike, Weekday};
 
 #[derive(Clone)]
 struct DstTester;
@@ -36,7 +35,7 @@ impl TimeZone for DstTester {
     fn offset_from_local_datetime(
         &self,
         local: NaiveDateTime,
-    ) -> crate::MappedLocalTime<Self::Offset> {
+    ) -> Result<MappedLocalTime<Self::Offset>, TzError> {
         let local_to_winter_transition_start = NaiveDate::from_ymd(
             local.year(),
             DstTester::TO_WINTER_MONTH_DAY.0,
@@ -70,19 +69,19 @@ impl TimeZone for DstTester {
         .and_time(DstTester::transition_start_local() + TimeDelta::hours(1));
 
         if local < local_to_winter_transition_end || local >= local_to_summer_transition_end {
-            MappedLocalTime::Single(DstTester::summer_offset())
+            Ok(MappedLocalTime::Single(DstTester::summer_offset()))
         } else if local >= local_to_winter_transition_start
             && local < local_to_summer_transition_start
         {
-            MappedLocalTime::Single(DstTester::winter_offset())
+            Ok(MappedLocalTime::Single(DstTester::winter_offset()))
         } else if local >= local_to_winter_transition_end
             && local < local_to_winter_transition_start
         {
-            MappedLocalTime::Ambiguous(DstTester::winter_offset(), DstTester::summer_offset())
+            Ok(MappedLocalTime::Ambiguous(DstTester::winter_offset(), DstTester::summer_offset()))
         } else if local >= local_to_summer_transition_start
             && local < local_to_summer_transition_end
         {
-            MappedLocalTime::None
+            Ok(MappedLocalTime::None)
         } else {
             panic!("Unexpected local time {}", local)
         }

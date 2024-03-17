@@ -20,6 +20,7 @@
 
 use core::fmt;
 
+use crate::error::TzError;
 use crate::naive::{NaiveDate, NaiveDateTime};
 use crate::DateTime;
 
@@ -258,14 +259,17 @@ pub trait TimeZone: Sized + Clone {
     fn from_offset(offset: &Self::Offset) -> Self;
 
     /// Creates the offset(s) for given local `NaiveDateTime` if possible.
-    fn offset_from_local_datetime(&self, local: NaiveDateTime) -> MappedLocalTime<Self::Offset>;
+    fn offset_from_local_datetime(
+        &self,
+        local: NaiveDateTime,
+    ) -> Result<MappedLocalTime<Self::Offset>, TzError>;
 
     /// Converts the local `NaiveDateTime` to the timezone-aware `DateTime` if possible.
     #[allow(clippy::wrong_self_convention)]
     fn from_local_datetime(&self, local: NaiveDateTime) -> MappedLocalTime<DateTime<Self>> {
         // Return `MappedLocalTime::None` when the offset pushes a value out of range, instead of
         // panicking.
-        match self.offset_from_local_datetime(local) {
+        match self.offset_from_local_datetime(local).unwrap() {
             MappedLocalTime::None => MappedLocalTime::None,
             MappedLocalTime::Single(offset) => match local.checked_sub_offset(offset.fix()) {
                 Ok(dt) => MappedLocalTime::Single(DateTime::from_naive_utc_and_offset(dt, offset)),

@@ -71,11 +71,10 @@ pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<Fi
 // We don't use `TzSpecificLocalTimeToSystemTime` because it doesn't let us choose how to handle
 // ambiguous cases (during a DST transition). Instead we get the timezone information for the
 // current year and compute it ourselves, like we do on Unix.
-pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
-    let tz_info = match TzInfo::for_year(local.year()) {
-        Ok(tz_info) => tz_info,
-        Err(_) => return MappedLocalTime::None,
-    };
+pub(super) fn offset_from_local_datetime(
+    local: NaiveDateTime,
+) -> Result<MappedLocalTime<FixedOffset>, TzError> {
+    let tz_info = TzInfo::for_year(local.year())?;
     // Create a sorted slice of transitions and use `lookup_with_dst_transitions`.
     match (tz_info.std_transition, tz_info.dst_transition) {
         (Some(std_transition), Some(dst_transition)) => {
@@ -88,22 +87,22 @@ pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTim
                 Ordering::Greater => [dst_transition, std_transition],
                 Ordering::Equal => {
                     // This doesn't make sense. Let's just return the standard offset.
-                    return MappedLocalTime::Single(tz_info.std_offset);
+                    return Ok(MappedLocalTime::Single(tz_info.std_offset));
                 }
             };
-            lookup_with_dst_transitions(&transitions, local)
+            Ok(lookup_with_dst_transitions(&transitions, local))
         }
         (Some(std_transition), None) => {
             let transitions =
                 [Transition::new(std_transition, tz_info.dst_offset, tz_info.std_offset)];
-            lookup_with_dst_transitions(&transitions, local)
+            Ok(lookup_with_dst_transitions(&transitions, local))
         }
         (None, Some(dst_transition)) => {
             let transitions =
                 [Transition::new(dst_transition, tz_info.std_offset, tz_info.dst_offset)];
-            lookup_with_dst_transitions(&transitions, local)
+            Ok(lookup_with_dst_transitions(&transitions, local))
         }
-        (None, None) => MappedLocalTime::Single(tz_info.std_offset),
+        (None, None) => Ok(MappedLocalTime::Single(tz_info.std_offset)),
     }
 }
 

@@ -11,6 +11,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::fixed::FixedOffset;
 use super::{MappedLocalTime, TimeZone};
+use crate::error::TzError;
 use crate::{DateTime, NaiveDateTime, Utc};
 
 #[cfg(unix)]
@@ -45,8 +46,8 @@ mod inner {
 
     pub(super) fn offset_from_local_datetime(
         _local_time: NaiveDateTime,
-    ) -> MappedLocalTime<FixedOffset> {
-        MappedLocalTime::Single(FixedOffset::east(0).unwrap())
+    ) -> Result<MappedLocalTime<FixedOffset>, TzError> {
+        Ok(MappedLocalTime::Single(FixedOffset::east(0).unwrap()))
     }
 }
 
@@ -63,7 +64,9 @@ mod inner {
         MappedLocalTime::Single(FixedOffset::west((offset * 60.0) as i32).unwrap())
     }
 
-    pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
+    pub(super) fn offset_from_local_datetime(
+        local: NaiveDateTime,
+    ) -> Result<MappedLocalTime<FixedOffset>, TzError> {
         let mut year = local.year();
         if year < 100 {
             // The API in `js_sys` does not let us create a `Date` with negative years.
@@ -83,7 +86,9 @@ mod inner {
         );
         let offset = js_date.get_timezone_offset();
         // We always get a result, even if this time does not exist or is ambiguous.
-        MappedLocalTime::Single(FixedOffset::west((offset * 60.0) as i32).unwrap())
+        let offset =
+            FixedOffset::west((offset * 60.0) as i32).map_err(|_| TzError::InvalidTimeZoneData)?;
+        Ok(MappedLocalTime::Single(offset))
     }
 }
 
@@ -156,7 +161,10 @@ impl TimeZone for Local {
         Local
     }
 
-    fn offset_from_local_datetime(&self, local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
+    fn offset_from_local_datetime(
+        &self,
+        local: NaiveDateTime,
+    ) -> Result<MappedLocalTime<FixedOffset>, TzError> {
         inner::offset_from_local_datetime(local)
     }
 

@@ -12,14 +12,17 @@ use std::{cell::RefCell, collections::hash_map, env, fs, hash::Hasher, time::Sys
 
 use super::tz_info::TimeZone;
 use super::{FixedOffset, NaiveDateTime};
+use crate::error::TzError;
 use crate::{Datelike, MappedLocalTime};
 
 pub(super) fn offset_from_utc_datetime(utc: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
     offset(utc, false)
 }
 
-pub(super) fn offset_from_local_datetime(local: NaiveDateTime) -> MappedLocalTime<FixedOffset> {
-    offset(local, true)
+pub(super) fn offset_from_local_datetime(
+    local: NaiveDateTime,
+) -> Result<MappedLocalTime<FixedOffset>, TzError> {
+    Ok(offset(local, true))
 }
 
 fn offset(d: NaiveDateTime, local: bool) -> MappedLocalTime<FixedOffset> {
