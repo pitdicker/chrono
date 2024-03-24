@@ -122,20 +122,23 @@ impl<T> MappedLocalTime<T> {
         }
     }
 
-    /// Maps a `MappedLocalTime<T>` into `MappedLocalTime<U>` with given function.
+    /// Maps a `MappedLocalTime<T>` into `Option<MappedLocalTime<U>>` with given function.
     ///
-    /// Returns `MappedLocalTime::None` if the function returns `None`.
+    /// Returns `None` if the function returns `None`.
     #[must_use]
-    pub(crate) fn and_then<U, F: FnMut(T) -> Option<U>>(self, mut f: F) -> MappedLocalTime<U> {
+    pub(crate) fn and_then<U, F: FnMut(T) -> Option<U>>(
+        self,
+        mut f: F,
+    ) -> Option<MappedLocalTime<U>> {
         match self {
-            MappedLocalTime::None => MappedLocalTime::None,
+            MappedLocalTime::None => Some(MappedLocalTime::None),
             MappedLocalTime::Single(v) => match f(v) {
-                Some(new) => MappedLocalTime::Single(new),
-                None => MappedLocalTime::None,
+                Some(new) => Some(MappedLocalTime::Single(new)),
+                None => None,
             },
             MappedLocalTime::Ambiguous(min, max) => match (f(min), f(max)) {
-                (Some(min), Some(max)) => MappedLocalTime::Ambiguous(min, max),
-                _ => MappedLocalTime::None,
+                (Some(min), Some(max)) => Some(MappedLocalTime::Ambiguous(min, max)),
+                _ => None,
             },
         }
     }
@@ -565,11 +568,13 @@ pub trait TimeZone: Sized + Clone {
     /// Converts the local `NaiveDateTime` to the timezone-aware `DateTime` if possible.
     #[allow(clippy::wrong_self_convention)]
     fn from_local_datetime(&self, local: &NaiveDateTime) -> MappedLocalTime<DateTime<Self>> {
-        self.offset_from_local_datetime(local).and_then(|off| {
-            local
-                .checked_sub_offset(off.fix())
-                .map(|dt| DateTime::from_naive_utc_and_offset(dt, off))
-        })
+        self.offset_from_local_datetime(local)
+            .and_then(|off| {
+                local
+                    .checked_sub_offset(off.fix())
+                    .map(|dt| DateTime::from_naive_utc_and_offset(dt, off))
+            })
+            .unwrap_or(MappedLocalTime::None)
     }
 
     /// Creates the offset for given UTC `NaiveDate`. This cannot fail.

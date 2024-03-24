@@ -167,5 +167,6 @@ impl Cache {
             .find_local_time_type_from_local(d.and_utc().timestamp(), d.year())
             .expect("unable to select local time type")
             .and_then(|o| FixedOffset::east_opt(o.offset()))
+            .unwrap_or(MappedLocalTime::None)
     }
 }
