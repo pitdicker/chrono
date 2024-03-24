@@ -29,7 +29,7 @@ use crate::offset::{FixedOffset, LocalResult, Offset, TimeZone, Utc};
 #[allow(deprecated)]
 use crate::Date;
 use crate::{expect, try_opt};
-use crate::{Datelike, Months, TimeDelta, Timelike, Weekday};
+use crate::{CalendarDuration, Datelike, Months, TimeDelta, Timelike, Weekday};
 
 #[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -681,6 +681,122 @@ impl<Tz: TimeZone> DateTime<Tz> {
         write_rfc3339(&mut result, self.naive_local(), self.offset.fix(), secform, use_z)
             .expect("writing rfc3339 datetime to string should never fail");
         result
+    }
+
+    /// Adds a `CalendarDuration` to this `DateTime`.
+    ///
+    /// This method first adds the *months* and *days* components of the duration in local time.
+    /// Then the value is converted back to a time zone aware datetime, and the accurate components
+    /// of the duration are added.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after adding the *months* component may not exist when the resulting
+    /// month has fewer days than the starting month.
+    ///
+    /// If there is a *days* component to add we consider the month as 'completed', and the first
+    /// day that is added will fall on the first day of the following month. If there is no *days*
+    /// component but there are accurate components to add, the portions of them that fall within
+    /// the non-existing day are ignored and the rest will later be added to the start of the
+    /// following month. Otherwise the date does not exist and this method returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date of adding the `months` component does not exist, and adding other
+    ///   components does not effect the date.
+    /// - The result is out of range.
+    pub fn add_duration(&self, duration: CalendarDuration) -> Option<LocalResult<Self>> {
+        // Add months and days in local time.
+        let local = self.naive_local();
+        let (date, exists) = local.date().add_months_days(duration.months(), duration.days())?;
+
+        // Prepare accurate components.
+        let (mins, secs) = duration.mins_and_secs();
+        let mut accurate_component = TimeDelta::new((mins * 60 + secs) as i64, duration.nanos())?;
+
+        // If the date exists: restore the time.
+        // If the date doesn't exist: create a datetime at midnight at the first day of the
+        // following month and ignore the part of the accurate component that would fall within the
+        // non-existing day.
+        let local_dt = match exists {
+            true => date.and_time(local.time()),
+            false => {
+                // We can work with a naive time because there are no time zone transitions or leap
+                // seconds on a non-existing day.
+                let ignore_secs = 86_400 - local.time().num_seconds_from_midnight() as i64;
+                let ignore = TimeDelta::try_seconds(ignore_secs).unwrap();
+                if ignore > accurate_component {
+                    // The accurate components of the duration are not going to alter the date.
+                    return None; // Does not exists
+                }
+                accurate_component -= ignore;
+                date.succ_opt()?.and_time(NaiveTime::MIN)
+            }
+        };
+
+        // Convert back to a time zone aware datetime and add the accurate components.
+        local_dt
+            .and_local_timezone(self.timezone())
+            .and_then(|dt| dt.checked_add_signed(accurate_component))
+    }
+
+    /// Subtracts a `CalendarDuration` to this `DateTime`.
+    ///
+    /// This method first subtracts the *months* and *days* components of the duration in local
+    /// time. Then the value is converted back to a time zone aware datetime, and the accurate
+    /// components of the duration are subtracted.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after subtracting the *months* component may not exist when the
+    /// resulting month has fewer days than the starting month.
+    ///
+    /// If there is a *days* component to subtract we consider the month as 'completed', and the
+    /// first day that is subtracted will fall on the last day of the preceding month. If there is
+    /// no *days* component but there are accurate components to subtract, the portions of them that
+    /// fall within the non-existing day are ignored and the rest will later be subtracted from the
+    /// end of the preceding month. Otherwise the date does not exist and this method returns
+    /// `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date of adding the `months` component does not exist, and adding other
+    ///   components does not effect the date.
+    /// - The result is out of range.
+    pub fn sub_duration(&self, duration: CalendarDuration) -> Option<LocalResult<Self>> {
+        // Subtract months and days in local time.
+        let local = self.naive_local();
+        let (date, exists) = local.date().sub_months_days(duration.months(), duration.days())?;
+
+        // Prepare accurate components.
+        let (mins, secs) = duration.mins_and_secs();
+        let mut accurate_component = TimeDelta::new((mins * 60 + secs) as i64, duration.nanos())?;
+
+        // If the date exists: restore the time.
+        // If the date doesn't exist: create a datetime at midnight at the first day of the
+        // following month and ignore the part of the accurate component that would fall within the
+        // non-existing day.
+        let local_dt = match exists {
+            true => date.and_time(local.time()),
+            false => {
+                // We can work with a naive time because there are no time zone transitions or leap
+                // seconds on a non-existing day.
+                let ignore_secs = local.time().num_seconds_from_midnight() as i64;
+                let ignore = TimeDelta::try_seconds(ignore_secs).unwrap();
+                if ignore > accurate_component {
+                    return None; // Does not exists
+                }
+                accurate_component -= ignore;
+                date.and_time(NaiveTime::MIN)
+            }
+        };
+
+        // Convert back to a time zone aware datetime and subtract the accurate components.
+        local_dt
+            .and_local_timezone(self.timezone())
+            .and_then(|dt| dt.checked_sub_signed(accurate_component))
     }
 
     /// Set the time to a new fixed time on the existing date.
