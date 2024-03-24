@@ -54,6 +54,88 @@ use crate::{expect, try_opt, OutOfRange};
 /// // Encoding 1½ year as a duration in seconds:
 /// let _duration = CalendarDuration::new().with_seconds(548 * 24 * 60 * 60).unwrap();
 /// ```
+///
+/// # Formatting and parsing
+///
+/// The [`Display`](fmt::Display) implementation will format a `CalendarDuration` to the ISO 8601
+/// duration format with designators.
+///
+/// The [`FromStr`](str::FromStr) implementation currently only supports the same duration with
+/// designators format, and not yet the ISO 8601 alternate format that is similar to how dates and
+/// times are encoded.
+///
+/// The designator format always starts with `P` (period), followed by number-designator pairs.
+/// First are the pairs for the "nominal" components, then a `T` (time), and then the pairs for the
+/// "accurate" components. Any number-designator pair may be missing when zero, as long as there is
+/// at least one pair. The last pair may contain a decimal fraction instead of an integer.
+///
+/// Supported formats:
+/// - `Pnn̲Ynn̲Mnn̲DTnn̲Hnn̲Mnn̲S`. Components: `Y` for years, `M` for months, `D` for days, `H` for
+///   hours, `M` for minutes, and `S` for seconds.
+/// - `Pnn̲W`. The only allowed component is `W` for weeks.
+///
+/// ```
+/// # #[cfg(feature = "alloc")] {
+/// use std::str::FromStr;
+/// use chrono::CalendarDuration;
+///
+/// let duration = CalendarDuration::new().with_months(105).with_days(5).with_hms(6, 5, 4).unwrap();
+///
+/// // Formatting and parsing
+/// let formatted = duration.to_string();
+/// assert_eq!(formatted, "P8Y9M5DT6H5M4S"); // months and minutes are decomposed
+/// assert_eq!(CalendarDuration::from_str(&formatted)?, duration);
+/// assert_eq!(formatted.parse(), Ok(duration));
+///
+/// // Seconds are not decomposed
+/// assert_eq!(CalendarDuration::new().with_seconds(123_456).unwrap().to_string(), "PT123456S");
+///
+/// // Multiple ISO 8601 duration strings can parse to the same `CalendarDate` because we consider
+/// // years a shorthand for 12 months, and consider hours a shorthand for 60 minutes.
+/// assert_eq!("P105M5DT6H5M4S".parse(), Ok(duration));
+/// assert_eq!("P8Y9M5DT6H5M4S".parse(), Ok(duration));
+/// assert_eq!("P8Y9M5DT365M4S".parse(), Ok(duration));
+///
+/// // The weeks format can be parsed, but we consistently format a duration with days.
+/// assert_eq!("P5W".parse(), Ok(CalendarDuration::new().with_weeks_and_days(5, 0).unwrap()));
+/// assert_eq!("P5W".parse::<CalendarDuration>()?.to_string(), "P35D");
+///
+/// // Any number-designator pair can be used to encode a duration of zero. We format it as "P0D".
+/// assert_eq!(CalendarDuration::new().to_string(), "P0D");
+/// assert_eq!("PT0S".parse(), Ok(CalendarDuration::new())); // 0 seconds equals 0 days
+///
+/// # }
+/// # Ok::<(), chrono::ParseError>(())
+/// ```
+///
+/// ## Fractional values
+///
+/// ISO 8601 optionally allows fractional values, even in places where they are ill-defined. Chrono
+/// only supports parsing a fractional value for components that can be encoded in the same base
+/// component:
+/// - Fractional years will be expressed in months.
+/// - Fractional weeks will be expressed in days.
+/// - Fractional hours, minutes or seconds will be expressed in minutes, seconds and nanoseconds.
+///
+/// The ISO 8601 format has no designator for subsecond components but expects them to be specified
+/// as a fraction. We format nanoseconds as a fraction of a second without trailing zero's.
+///
+/// Both `,`  and `.` are supported as decimal separators when parsing. Although the comma is
+/// preferred by ISO 8601 we use `.` when formatting.
+///
+/// ```
+/// # #[cfg(feature = "alloc")] {
+/// # use chrono::CalendarDuration;
+/// let duration = CalendarDuration::new().with_hms(0, 3, 5).unwrap().with_millis(330).unwrap();
+/// assert_eq!(duration.to_string(), "PT3M5.33S");
+/// assert_eq!("PT3M5,33S".parse(), Ok(duration));
+///
+/// assert_eq!("P12,5Y".parse(), Ok(CalendarDuration::new().with_years_and_months(12, 6).unwrap()));
+/// assert_eq!("P1.43W".parse(), Ok(CalendarDuration::new().with_days(10))); // horrible :-)
+/// assert_eq!("PT6,25H".parse(), Ok(CalendarDuration::new().with_hms(6, 15, 0).unwrap()));
+/// # }
+/// # Ok::<(), chrono::ParseError>(())
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CalendarDuration {
     // Components with a nominal duration
