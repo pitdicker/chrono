@@ -36,7 +36,7 @@ use crate::format::{
 use crate::month::Months;
 use crate::naive::{Days, IsoWeek, NaiveDateTime, NaiveTime, NaiveWeek};
 use crate::{expect, try_opt};
-use crate::{Datelike, TimeDelta, Weekday};
+use crate::{CalendarDuration, Datelike, TimeDelta, Weekday};
 
 use super::internals::{Mdf, YearFlags};
 
@@ -1342,6 +1342,208 @@ impl NaiveDate {
     /// ```
     pub const fn leap_year(&self) -> bool {
         self.yof() & (0b1000) == 0
+    }
+
+    /// Adds a `CalendarDuration` to this `NaiveDate`.
+    ///
+    /// This method first adds the *months* component of the duration to the date. Next it adds the
+    /// *days* component and the number of full days in the accurate component together, and adds
+    /// them to the intermediate value.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after adding the *months* component may not exist when the resulting
+    /// month has fewer days than the starting month.
+    ///
+    /// If there are days to add we consider the month as 'completed', and the first day that is
+    /// added will fall on the first day of the following month. If there are no days to add the
+    /// date does not exist and this method returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date after adding the *months* component does not exist, and adding other
+    ///   components does not effect the date.
+    /// - The result is out of range.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chrono::{CalendarDuration, NaiveDate};
+    ///
+    /// let date = NaiveDate::from_ymd_opt(2024, 7, 31).unwrap();
+    /// let duration = CalendarDuration::new().with_months(1);
+    /// assert_eq!(date.add_duration(duration), NaiveDate::from_ymd_opt(2024, 8, 31));
+    ///
+    /// let duration = CalendarDuration::new().with_months(2);
+    /// assert_eq!(date.add_duration(duration), None); // 2024-09-31 doesn't exist
+    ///
+    /// // Two full months and a day will have passed on 2024-10-01
+    /// let duration = CalendarDuration::new().with_months(2).with_days(1);
+    /// assert_eq!(date.add_duration(duration), NaiveDate::from_ymd_opt(2024, 10, 1));
+    ///
+    /// // Adding 365 days is different from adding 12 months
+    /// let date = NaiveDate::from_ymd_opt(2023, 5, 4).unwrap();
+    /// assert_eq!(
+    ///     date.add_duration(CalendarDuration::new().with_months(12)),
+    ///     NaiveDate::from_ymd_opt(2024, 5, 4)
+    /// );
+    /// assert_eq!(
+    ///     date.add_duration(CalendarDuration::new().with_days(365)),
+    ///     NaiveDate::from_ymd_opt(2024, 5, 3)
+    /// );
+    ///
+    /// // The integral number of 24-hour days in the accurate component is also added.
+    /// let duration = CalendarDuration::new().with_days(1);
+    /// assert_eq!(date.add_duration(duration), NaiveDate::from_ymd_opt(2023, 5, 5));
+    /// let duration = CalendarDuration::new().with_days(1).with_seconds(24 * 60 * 60).unwrap();
+    /// assert_eq!(date.add_duration(duration), NaiveDate::from_ymd_opt(2023, 5, 6));
+    /// ```
+    pub const fn add_duration(&self, duration: CalendarDuration) -> Option<NaiveDate> {
+        let (mins, secs) = duration.mins_and_secs();
+        let days_in_accurate_component = (mins * 60 + secs) / 86_400;
+        let days = duration.days() as u64 + days_in_accurate_component;
+        if days > i32::MAX as u64 {
+            return None;
+        }
+        let (date, exists) = try_opt!(self.add_months_days(duration.months(), days as u32));
+        match exists {
+            true => Some(date),
+            false => None,
+        }
+    }
+
+    /// Subtracts a `CalendarDuration` from this `NaiveDate`.
+    ///
+    /// This method first subtracts the *months* component of the duration from the date. Next it
+    /// adds the *days* component and the number of full days in the accurate component together,
+    /// and subtracts them from the intermediate value.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after subtracting the *months* component may not exist when the
+    /// resulting month has fewer days than the starting month.
+    ///
+    /// If there are days to subtract we consider the month as 'completed', and the first day that
+    /// is subtracted will fall on the last day of the preceding month. If there are no days to
+    /// subtract the date does not exist and this method returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date after subtracting the *months* component does not exist, and
+    ///   subtracting other components does not effect the date.
+    /// - The result is out of range.
+    pub const fn sub_duration(&self, duration: CalendarDuration) -> Option<NaiveDate> {
+        let (mins, secs) = duration.mins_and_secs();
+        let days_in_accurate_component = (mins * 60 + secs) / 86_400;
+        let days = duration.days() as u64 + days_in_accurate_component;
+        if days > i32::MAX as u64 {
+            return None;
+        }
+        let (date, exists) = try_opt!(self.sub_months_days(duration.months(), days as u32));
+        match exists {
+            true => Some(date),
+            false => None,
+        }
+    }
+
+    /// Add `months` and `days` to `self`.
+    ///
+    /// This method first adds `months` to the date, and than adds `days`.
+    ///
+    /// The intermediate date after adding the `months` part may not exist because the resulting
+    /// month has fewer days than the starting month. If `days` is non-zero we act as if the
+    /// intermediate date does exist and is the last day of the month. Then the addition of `days`
+    /// will create a date in a later month.
+    ///
+    /// Returns `(date, exists)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if the result is out of range.
+    #[inline]
+    pub(crate) const fn add_months_days(
+        &self,
+        months: u32,
+        days: u32,
+    ) -> Option<(NaiveDate, bool)> {
+        // The maximum number of months between `NaiveDate::MIN` and `NaiveDate::MAX` is 2^19 * 12.
+        // Return out of range for values > 2^23 so we don't need to worry about integer overflow.
+        if months >= (1 << 23) || days > i32::MAX as u32 {
+            return None;
+        }
+        match (self.add_months(months as i32), days as i32) {
+            (Some((date, false)), 0) => Some((date, false)),
+            (Some((date, _)), days) => Some((try_opt!(date.add_days(days)), true)),
+            (None, _) => None, // out of range
+        }
+    }
+
+    /// Subtract `months` and `days` from `self`.
+    ///
+    /// This method first subtracts `months` from the date, and than subtracts `days`.
+    ///
+    /// The intermediate date after subtracting the `months` part may not exist because the
+    /// resulting month has fewer days than the starting month. If `days` is non-zero we act as if
+    /// the intermediate date does exist and is the first day of the following month. Then the
+    /// subtraction of `days` will create a date in a earlier month.
+    ///
+    /// Returns `(date, exists)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if the result is out of range.
+    #[inline]
+    pub(crate) const fn sub_months_days(
+        &self,
+        months: u32,
+        days: u32,
+    ) -> Option<(NaiveDate, bool)> {
+        // The maximum number of months between `NaiveDate::MIN` and `NaiveDate::MAX` is 2^19 * 12.
+        // Return out of range for values > 2^23 so we don't need to worry about integer overflow.
+        if months >= (1 << 23) || days > i32::MAX as u32 {
+            return None;
+        }
+        match (self.add_months(-(months as i32)), -(days as i32)) {
+            (Some((date, false)), 0) => Some((date, false)),
+            (Some((date, _)), days) => Some((try_opt!(date.add_days(days)), true)),
+            (None, _) => None, // out of range
+        }
+    }
+
+    /// Add `months` to `self`.
+    ///
+    /// The resulting date may not exist because the resulting month has less days than the
+    /// starting month. In that case we return the last day of the month if `month` is positive, and
+    /// the first day of the following month if `month` is negative.
+    ///
+    /// Returns `(date, exists)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if the result is out of range.
+    #[inline]
+    const fn add_months(&self, months: i32) -> Option<(NaiveDate, bool)> {
+        let mut months0 = self.month() as i32 - 1 + months;
+        let year = self.year() + (months0.div_euclid(12));
+        let month = months0.rem_euclid(12) as u32 + 1;
+
+        let year_flags = YearFlags::from_year(year);
+        let mdf = expect(Mdf::new(month, self.day(), year_flags), "");
+        if let Some(date) = NaiveDate::from_mdf(year, mdf) {
+            Some((date, true))
+        } else if months >= 0 {
+            // Date does not exist, return the last day of the month.
+            let mdf = expect(Mdf::from_last_day_of_month(month, year_flags), "");
+            Some((try_opt!(NaiveDate::from_mdf(year, mdf)), false))
+        } else {
+            // Date does not exist, return the first day of the following month.
+            months0 += 1;
+            let year = self.year() + (months0.div_euclid(12));
+            let month = months0.rem_euclid(12) as u32 + 1;
+            Some((try_opt!(NaiveDate::from_ymd_opt(year, month, 1)), false))
+        }
     }
 
     // This duplicates `Datelike::year()`, because trait methods can't be const yet.
