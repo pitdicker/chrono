@@ -21,8 +21,8 @@ use crate::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
 use crate::offset::Utc;
 use crate::time_delta::NANOS_PER_SEC;
 use crate::{
-    expect, try_opt, DateTime, Datelike, FixedOffset, MappedLocalTime, Months, TimeDelta, TimeZone,
-    Timelike, Weekday,
+    expect, try_opt, CalendarDuration, DateTime, Datelike, FixedOffset, MappedLocalTime, Months,
+    TimeDelta, TimeZone, Timelike, Weekday,
 };
 #[cfg(feature = "rustc-serialize")]
 pub(super) mod rustc_serialize;
@@ -938,6 +938,76 @@ impl NaiveDateTime {
     #[must_use]
     pub const fn and_utc(&self) -> DateTime<Utc> {
         DateTime::from_naive_utc_and_offset(*self, Utc)
+    }
+
+    /// Adds a `CalendarDuration` to this `NaiveDateTime`.
+    ///
+    /// This method first adds the *months* component of the duration to `self`. Next it adds the
+    /// *days* component and the accurate component together, and adds them to the intermediate
+    /// value.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after adding the *months* component may not exist when the resulting
+    /// month has fewer days than the starting month.
+    ///
+    /// If there are other components to add the parts of them that fall within the non-existing day
+    /// are ignored, and the rest is added to the start of the following month. Otherwise the date
+    /// does not exist and this method returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date after adding the *months* component does not exist, and adding other
+    ///   components does not effect the date.
+    /// - The result is out of range.
+    pub const fn add_duration(&self, duration: CalendarDuration) -> Option<NaiveDateTime> {
+        let (mins, secs) = duration.mins_and_secs();
+        let secs = try_opt!(TimeDelta::new(
+            duration.days() as i64 * 86_400 + (mins * 60 + secs) as i64,
+            duration.nanos(),
+        ));
+        let (date, exists) = try_opt!(self.date().add_months_days(duration.months(), 0));
+        let dt = try_opt!(date.and_time(self.time()).checked_add_signed(secs));
+        if !exists && dt.date().yof() == date.yof() {
+            return None; // date is unchanged -> it doesn't exist
+        }
+        Some(dt)
+    }
+
+    /// Subtracts a `CalendarDuration` from this `NaiveDateTime`.
+    ///
+    /// This method first subtracts the *months* component of the duration from `self`. Next it adds
+    /// the `days` component and the accurate component together, and subtracts them from the
+    /// intermediate value.
+    ///
+    /// # Supports invalid intermediate dates
+    ///
+    /// The intermediate date after subtracting the *months* component may not exist when the
+    /// resulting month has fewer days than the starting month.
+    ///
+    /// If there are other components to subtract the parts of them that fall within the
+    /// non-existing day are ignored, and the rest is subtracted to the end of the preceding month.
+    /// Otherwise the date does not exist and this method returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// This method returns `None` if:
+    /// - The intermediate date after subtracting the *months* component does not exist, and
+    ///   subtracting other components does not effect the date.
+    /// - The result is out of range.
+    pub const fn sub_duration(&self, duration: CalendarDuration) -> Option<NaiveDateTime> {
+        let (mins, secs) = duration.mins_and_secs();
+        let secs = try_opt!(TimeDelta::new(
+            duration.days() as i64 * 86_400 + (mins * 60 + secs) as i64,
+            duration.nanos(),
+        ));
+        let (date, exists) = try_opt!(self.date().sub_months_days(duration.months(), 0));
+        let dt = try_opt!(date.and_time(self.time()).checked_sub_signed(secs));
+        if !exists && dt.date().yof() == date.yof() {
+            return None; // date is unchanged -> it doesn't exist
+        }
+        Some(dt)
     }
 
     /// The minimum possible `NaiveDateTime`.

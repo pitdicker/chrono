@@ -1623,7 +1623,7 @@ impl NaiveDate {
 
     /// Get the raw year-ordinal-flags `i32`.
     #[inline]
-    const fn yof(&self) -> i32 {
+    pub(crate) const fn yof(&self) -> i32 {
         self.yof.get()
     }
 
