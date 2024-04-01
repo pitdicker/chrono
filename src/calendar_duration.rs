@@ -1,3 +1,5 @@
+//! Duration type capable of expressing a duration as a combination of multiple units.
+
 use core::fmt;
 use core::num::NonZeroU64;
 use core::str;
@@ -444,6 +446,31 @@ impl MinutesAndSeconds {
             false => (value >> 8, (value >> 2) & 0b11_1111),
         }
     }
+}
+
+/// Create a new `CalendarDuration` with a *months* component.
+pub const fn months(months: u32) -> CalendarDuration {
+    CalendarDuration::new().with_months(months)
+}
+
+/// Create a new `CalendarDuration` with a *days* component.
+pub const fn days(days: u32) -> CalendarDuration {
+    CalendarDuration::new().with_days(days)
+}
+
+/// Create a new `CalendarDuration` with a *minutes* component in hours.
+pub const fn hours(hours: u32) -> CalendarDuration {
+    expect(CalendarDuration::new().with_hms(hours as u64, 0, 0), "always in range")
+}
+
+/// Create a new `CalendarDuration` with a *minutes* component.
+pub const fn minutes(minutes: u32) -> CalendarDuration {
+    expect(CalendarDuration::new().with_hms(0, minutes as u64, 0), "always in range")
+}
+
+/// Create a new `CalendarDuration` with a *seconds* component.
+pub const fn seconds(seconds: u32) -> CalendarDuration {
+    expect(CalendarDuration::new().with_seconds(seconds as u64), "always in range")
 }
 
 #[cfg(test)]

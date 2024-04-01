@@ -515,7 +515,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod calendar_duration;
+pub mod calendar_duration;
 pub use calendar_duration::CalendarDuration;
 
 mod time_delta;
