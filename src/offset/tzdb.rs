@@ -1,8 +1,9 @@
 use std::cmp::{Ord, Ordering};
-use std::num::NonZeroU32;
 use std::str;
 
-use crate::{expect, Datelike, Days, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Weekday, Timelike};
+use crate::{
+    expect, Datelike, Days, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday,
+};
 
 struct TimeZone(&'static [TzChange]);
 
@@ -20,26 +21,27 @@ const fn new(
 ) -> TzChange {
     let date = match (ymd_time_offset.0, ymd_time_offset.1, ymd_time_offset.2) {
         (0, 0, 0) => None,
-        (y, m, d) => Some(expect!(NaiveDate::from_ymd_opt(y, m, d), "invalid date")),
+        (y, m, d) => Some(expect(NaiveDate::from_ymd_opt(y, m, d), "invalid date")),
     };
     let time = ymd_time_offset.3;
     let local_minus_utc = ymd_time_offset.4;
     TzChange { date, time, local_minus_utc, rules_or_offset }
 }
 
-const fn change(
-    ymd_time_offset: (i32, u32, u32, u32, i32),
-    offset: (i32, &str, bool)
-) -> TzChange {
+const fn change(ymd_time_offset: (i32, u32, u32, u32, i32), offset: (i32, &str, bool)) -> TzChange {
     TzChange::default()
 }
 
-const fn rule(
-    ymd_time_offset: (DateSpec, u32, i32),
-    offset: (i32, &str, bool)
-) -> TzChange {
+const fn rule(ymd_time_offset: (DateSpec, u32, i32), offset: (i32, &str, bool)) -> TzChange {
     TzChange::default()
 }
+
+#[derive(Clone, Debug)]
+enum RulesOrOffset {
+    Rules([((DateSpec, i32, i32), (i32, &'static str, bool)); 2]), // (date rule, local time, offset), (offset, name, dst)
+    Offset(i32, &'static str, bool),                               // (offset, name, dst)
+}
+
 
 #[derive(Copy, Clone, Debug)]
 enum DateSpec {
@@ -79,15 +81,10 @@ impl DateSpec {
     }
 }
 
+// ---------------------------------
+
 use crate::Weekday::*;
 use DateSpec::*;
-
-#[derive(Clone, Debug)]
-enum RulesOrOffset {
-    Rules([((DateSpec, i32, i32), (i32, &'static str, bool)); 2]), // (date rule, local time, offset), (offset, name, dst)
-    Offset(i32, &'static str, bool),                               // (offset, name, dst)
-}
-use RulesOrOffset::*;
 
 const EUROPE_AMSTERDAM: &'static [TzChange] = &[
     rule((Last(3, Sun), 7200, 3600), (7200, "CEST", true)),
@@ -120,7 +117,7 @@ const EUROPE_AMSTERDAM: &'static [TzChange] = &[
     rule((MonthDay(5, 15), 7200, 1172), (4772, "NST", true)),
     rule((OnOrAfter(10, Sun, 2), 10800, 4772), (1172, "AMT", false)),
     change((1932, 10, 2, 10800, 4772), (1172, "AMT", false)),
-    change((1932, 5, 22, 7200, 1172), (4772, "NST", true)),   // a week later
+    change((1932, 5, 22, 7200, 1172), (4772, "NST", true)), // a week later
     change((1931, 10, 4, 10800, 4772), (1172, "AMT", false)), // inserted because the next transition is later
     rule((MonthDay(5, 15), 7200, 1172), (4772, "NST", true)),
     rule((OnOrAfter(10, Sun, 2), 10800, 4772), (1172, "AMT", false)),
@@ -151,8 +148,12 @@ fn offset_from_local_datetime(tz: &[TzChange], dt: NaiveDateTime) {
     for tz_change in tz {
         match Some(date).cmp(&tz_change.date) {
             Ordering::Less => continue,
-            Ordering::Equal => if time < tz_change.time { continue },
-            Ordering::Greater => {},
+            Ordering::Equal => {
+                if time < tz_change.time {
+                    continue;
+                }
+            }
+            Ordering::Greater => {}
         }
         dbg!(tz_change);
         return;
@@ -161,7 +162,7 @@ fn offset_from_local_datetime(tz: &[TzChange], dt: NaiveDateTime) {
 
 #[test]
 fn test_tz_change() {
-    use crate::{Utc, Duration};
+    use crate::{Duration, Utc};
     let mut dt = Utc::now().naive_local();
     while dt.year() > 1800 {
         eprint!("{}", dt);
