@@ -3,7 +3,6 @@
 
 //! ISO 8601 time without timezone.
 
-#[cfg(feature = "alloc")]
 use core::borrow::Borrow;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -12,11 +11,9 @@ use core::{fmt, str};
 #[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[cfg(feature = "alloc")]
-use crate::format::DelayedFormat;
 use crate::format::{
-    parse, parse_and_remainder, write_hundreds, Fixed, Item, Numeric, Pad, ParseError, ParseResult,
-    Parsed, StrftimeItems,
+    parse, parse_and_remainder, write_hundreds, DelayedFormat, Fixed, Item, Numeric, Pad,
+    ParseError, ParseResult, Parsed, StrftimeItems,
 };
 use crate::{expect, try_opt};
 use crate::{FixedOffset, TimeDelta, Timelike};
@@ -818,7 +815,6 @@ impl NaiveTime {
     /// # let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
     /// assert_eq!(format!("{}", t.format_with_items(fmt)), "23:56:04");
     /// ```
-    #[cfg(feature = "alloc")]
     #[inline]
     #[must_use]
     pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
@@ -863,7 +859,6 @@ impl NaiveTime {
     /// assert_eq!(format!("{}", t.format("%H:%M:%S%.6f")), "23:56:04.012345");
     /// assert_eq!(format!("{}", t.format("%-I:%M %p")), "11:56 PM");
     /// ```
-    #[cfg(feature = "alloc")]
     #[inline]
     #[must_use]
     pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
