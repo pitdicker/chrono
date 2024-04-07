@@ -182,11 +182,31 @@ impl CalendarDuration {
         self
     }
 
+    /// Set the months component of this duration to `years * 12 + months`.
+    ///
+    ///  # Errors
+    ///
+    /// Returns `None` if the value of the months component would be out of range.
+    pub const fn with_years_and_months(mut self, years: u32, months: u32) -> Option<Self> {
+        self.months = try_opt!(try_opt!(years.checked_mul(12)).checked_add(months));
+        Some(self)
+    }
+
     /// Set the days component of this duration to `days`.
     #[must_use]
     pub const fn with_days(mut self, days: u32) -> Self {
         self.days = days;
         self
+    }
+
+    /// Set the days component of this duration to `weeks * 7 + days`.
+    ///
+    ///  # Errors
+    ///
+    /// Returns `None` if the value of the days component would be out of range.
+    pub const fn with_weeks_and_days(mut self, weeks: u32, days: u32) -> Option<Self> {
+        self.days = try_opt!(try_opt!(weeks.checked_mul(7)).checked_add(days));
+        Some(self)
     }
 
     /// Sets the accurate component of this duration to a value in minutes and seconds.
@@ -236,6 +256,30 @@ impl CalendarDuration {
         }
         self.nanos = nanos;
         Some(self)
+    }
+
+    /// Sets the nanoseconds component of this duration to `micros * 1000`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if `micros` exceeds 999_999.
+    pub const fn with_micros(self, micros: u32) -> Option<Self> {
+        if micros >= 1_000_000 {
+            return None;
+        }
+        self.with_nanos(micros * 1000)
+    }
+
+    /// Sets the nanoseconds component of this duration to `millis * 1000`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if `millis` exceeds 999.
+    pub const fn with_millis(self, millis: u32) -> Option<Self> {
+        if millis >= 1000 {
+            return None;
+        }
+        self.with_nanos(millis * 1_000_000)
     }
 
     /// Returns the `months` component of this calendar duration.
@@ -343,7 +387,9 @@ mod tests {
         compare(duration, 1, 2, 3 * 60 + 4, 5, 6);
 
         compare(CalendarDuration::new().with_months(18), 18, 0, 0, 0, 0);
+        compare(CalendarDuration::new().with_years_and_months(1, 6).unwrap(), 18, 0, 0, 0, 0);
         compare(CalendarDuration::new().with_days(15), 0, 15, 0, 0, 0);
+        compare(CalendarDuration::new().with_weeks_and_days(2, 1).unwrap(), 0, 15, 0, 0, 0);
         compare(CalendarDuration::new().with_hms(3, 4, 5).unwrap(), 0, 0, 3 * 60 + 4, 5, 0);
         compare(CalendarDuration::new().with_seconds(123_456).unwrap(), 0, 0, 0, 123_456, 0);
         compare(CalendarDuration::new().with_nanos(123_456_789).unwrap(), 0, 0, 0, 0, 123_456_789);
@@ -355,6 +401,16 @@ mod tests {
 
     #[test]
     fn test_invalid_returns_none() {
+        assert!(CalendarDuration::new().with_years_and_months(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX / 12 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_years_and_months(u32::MAX, 1).is_none());
+
+        assert!(CalendarDuration::new().with_weeks_and_days(0, u32::MAX).is_some());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX / 7 + 1, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 0).is_none());
+        assert!(CalendarDuration::new().with_weeks_and_days(u32::MAX, 1).is_none());
+
         const MAX_MINUTES: u64 = u64::MAX >> 8;
         const MAX_HOURS: u64 = MAX_MINUTES / 60;
         assert!(CalendarDuration::new().with_hms(100, 100, 60).is_some());
@@ -376,6 +432,10 @@ mod tests {
 
         assert!(CalendarDuration::new().with_nanos(1_000_000_000).is_none());
         assert!(CalendarDuration::new().with_nanos(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_micros(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_micros(u32::MAX).is_none());
+        assert!(CalendarDuration::new().with_millis(1_000_000).is_none());
+        assert!(CalendarDuration::new().with_millis(u32::MAX).is_none());
     }
 
     #[test]
@@ -408,7 +468,7 @@ mod tests {
             "P3Y9M5DT6H5M43S"
         );
         assert_eq!(new().to_string(), "P0D");
-        assert_eq!(new().with_months(24).to_string(), "P2Y");
+        assert_eq!(new().with_years_and_months(2, 0).unwrap().to_string(), "P2Y");
         assert_eq!(new().with_months(3).to_string(), "P3M");
         assert_eq!(new().with_days(25).to_string(), "P25D");
         assert_eq!(new().with_hms(2, 0, 0).unwrap().to_string(), "PT2H");
