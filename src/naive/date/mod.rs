@@ -969,9 +969,9 @@ impl NaiveDate {
     #[inline]
     #[must_use]
     pub const fn succ_opt(&self) -> Option<NaiveDate> {
-        let new_ol = (self.yof() & OL_MASK) + (1 << 4);
-        match new_ol <= MAX_OL {
-            true => Some(NaiveDate::from_yof(self.yof() & !OL_MASK | new_ol)),
+        let new_yof = self.yof() + (1 << 4);
+        match new_yof & OL_MASK <= MAX_OL {
+            true => Some(NaiveDate::from_yof(new_yof)),
             false => NaiveDate::from_yo_opt(self.year() + 1, 1),
         }
     }
@@ -1008,9 +1008,9 @@ impl NaiveDate {
     #[inline]
     #[must_use]
     pub const fn pred_opt(&self) -> Option<NaiveDate> {
-        let new_shifted_ordinal = (self.yof() & ORDINAL_MASK) - (1 << 4);
-        match new_shifted_ordinal > 0 {
-            true => Some(NaiveDate::from_yof(self.yof() & !ORDINAL_MASK | new_shifted_ordinal)),
+        let new_yof = self.yof() - (1 << 4);
+        match new_yof & ORDINAL_MASK > 0 {
+            true => Some(NaiveDate::from_yof(new_yof)),
             false => NaiveDate::from_ymd_opt(self.year() - 1, 12, 31),
         }
     }
