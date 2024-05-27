@@ -1,4 +1,5 @@
 #![allow(non_snake_case, non_upper_case_globals, non_camel_case_types, dead_code, clippy::all)]
+windows_targets::link!("advapi32.dll" "system" fn EnumDynamicTimeZoneInformation(dwindex : u32, lptimezoneinformation : *mut DYNAMIC_TIME_ZONE_INFORMATION) -> u32);
 windows_targets::link!("kernel32.dll" "system" fn GetTimeZoneInformationForYear(wyear : u16, pdtzi : *const DYNAMIC_TIME_ZONE_INFORMATION, ptzi : *mut TIME_ZONE_INFORMATION) -> BOOL);
 windows_targets::link!("kernel32.dll" "system" fn SystemTimeToFileTime(lpsystemtime : *const SYSTEMTIME, lpfiletime : *mut FILETIME) -> BOOL);
 windows_targets::link!("kernel32.dll" "system" fn SystemTimeToTzSpecificLocalTime(lptimezoneinformation : *const TIME_ZONE_INFORMATION, lpuniversaltime : *const SYSTEMTIME, lplocaltime : *mut SYSTEMTIME) -> BOOL);
@@ -23,6 +24,8 @@ impl Clone for DYNAMIC_TIME_ZONE_INFORMATION {
         *self
     }
 }
+pub const ERROR_NO_MORE_ITEMS: WIN32_ERROR = 259u32;
+pub const ERROR_SUCCESS: WIN32_ERROR = 0u32;
 #[repr(C)]
 pub struct FILETIME {
     pub dwLowDateTime: u32,
@@ -67,3 +70,4 @@ impl Clone for TIME_ZONE_INFORMATION {
         *self
     }
 }
+pub type WIN32_ERROR = u32;

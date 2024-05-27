@@ -11,8 +11,9 @@
 use std::cmp::Ordering;
 use std::mem::MaybeUninit;
 use std::ptr;
+use std::time::{Duration, SystemTime};
 
-use super::win_bindings::{GetTimeZoneInformationForYear, SYSTEMTIME, TIME_ZONE_INFORMATION};
+use super::win_bindings::{GetTimeZoneInformationForYear, EnumDynamicTimeZoneInformation, ERROR_SUCCESS, ERROR_NO_MORE_ITEMS, SYSTEMTIME, TIME_ZONE_INFORMATION, DYNAMIC_TIME_ZONE_INFORMATION};
 
 use crate::offset::local::{lookup_with_dst_transitions, Transition};
 use crate::{Datelike, FixedOffset, MappedLocalTime, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
@@ -132,6 +133,7 @@ impl TzInfo {
         // Working with timezones and daylight saving time this far into the past or future makes
         // little sense. But whatever is extrapolated for 1601 or 30827 is what can be extrapolated
         // for years beyond.
+        TzInfoCache::default().get_entries();
         let ref_year = year.clamp(1601, 30827) as u16;
         let tz_info = unsafe {
             let mut tz_info = MaybeUninit::<TIME_ZONE_INFORMATION>::uninit();
@@ -154,6 +156,48 @@ impl TzInfo {
             std_transition: naive_date_time_from_system_time(tz_info.StandardDate, year).ok()?,
             dst_transition: naive_date_time_from_system_time(tz_info.DaylightDate, year).ok()?,
         })
+    }
+}
+
+struct TzInfoCache {
+    last_checked: Option<SystemTime>,
+    default: DYNAMIC_TIME_ZONE_INFORMATION,
+    dynamic_tz_info: DynamicTzInfo,
+
+}
+
+struct DynamicTzInfo {
+    first_year: i32,
+    last_year: i32,
+    tz_info: Vec<DYNAMIC_TIME_ZONE_INFORMATION>,
+}
+
+impl TzInfoCache {
+    fn refresh(&mut self) {
+        let now = SystemTime::now();
+        if self.last_checked.and_then(|t| now.duration_since(t).ok()) > Some(Duration::new(1, 0)) {
+            self.last_checked = Some(now);
+            self.get_entries();
+    
+        }
+    }
+
+    fn get_entries(&mut self) {
+        let mut entries = Vec::new();
+        loop {
+            let tz_info = unsafe {
+                let mut tz_info = MaybeUninit::<DYNAMIC_TIME_ZONE_INFORMATION>::uninit();
+                match EnumDynamicTimeZoneInformation(entries.len() as u32, tz_info.as_mut_ptr()) {
+                    ERROR_SUCCESS => {},
+                    ERROR_NO_MORE_ITEMS => break,
+                    _ => return, // FIXME: return error
+                }
+                tz_info.assume_init()
+            };
+            println!("{}", tz_info.StandardDate.wYear);
+            entries.push(tz_info);
+        }
+        self.entries = entries;
     }
 }
 

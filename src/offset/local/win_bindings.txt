@@ -2,6 +2,10 @@
 --config flatten sys no-bindgen-comment
 --filter
     Windows.Win32.System.Time.GetTimeZoneInformationForYear
+    Windows.Win32.System.Time.EnumDynamicTimeZoneInformation
+    Windows.Win32.System.Time.GetDynamicTimeZoneInformationEffectiveYears
     Windows.Win32.System.Time.SystemTimeToFileTime
     Windows.Win32.System.Time.SystemTimeToTzSpecificLocalTime
     Windows.Win32.System.Time.TzSpecificLocalTimeToSystemTime
+    Windows.Win32.Foundation.ERROR_SUCCESS
+    Windows.Win32.Foundation.ERROR_NO_MORE_ITEMS
