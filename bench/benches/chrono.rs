@@ -221,6 +221,22 @@ fn bench_datetime_with(c: &mut Criterion) {
     });
 }
 
+fn bench_date_pred_succ(c: &mut Criterion) {
+    let date = NaiveDate::from_ymd_opt(2024, 5, 27).unwrap();
+    c.bench_function("bench_date_pred_succ", |b| {
+        b.iter(|| {
+            let mut d = date;
+            for _ in 0..10_000 {
+                d = black_box(d.pred_opt().unwrap());
+            }
+            for _ in 0..10_000 {
+                d = black_box(d.succ_opt().unwrap());
+            }
+            assert_eq!(d, date)
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_date_from_ymd,
@@ -239,6 +255,7 @@ criterion_group!(
     bench_format_manual,
     bench_naivedate_add_signed,
     bench_datetime_with,
+    bench_date_pred_succ,
 );
 
 #[cfg(feature = "unstable-locales")]
