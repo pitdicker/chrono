@@ -19,7 +19,7 @@ use crate::naive::{NaiveDate, NaiveDateTime};
 /// on a `FixedOffset` struct is the preferred way to construct
 /// `DateTime<FixedOffset>` instances. See the [`east_opt`](#method.east_opt) and
 /// [`west_opt`](#method.west_opt) methods for examples.
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
+#[derive(PartialEq, Default, Eq, Hash, Copy, Clone)]
 #[cfg_attr(
     any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
     derive(Archive, Deserialize, Serialize),
